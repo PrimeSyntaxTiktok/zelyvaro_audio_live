@@ -21,7 +21,16 @@ Télécharger `ZelyvaroAudioLive-<version>-setup.exe` depuis les [Releases](http
 Installation dans le profil utilisateur, désinstallation via Windows. Aucun Python nécessaire sur le PC cible.
 Le binaire est non signé : Windows peut afficher un avertissement de réputation.
 
-La capture démarre automatiquement sur la sortie Windows par défaut via WASAPI loopback (PyAudioWPatch).
+Cliquer sur la **source audio en haut de l’écran**, ou **Audio > Choisir l’application audio…**.
+Choisir **Tout le son Windows**, ou une application avec une session de lecture (Spotify, Deezer, navigateur, jeu…).
+Si elle n’apparaît pas, lancer un son dans cette application puis cliquer sur **Actualiser les applications**.
+Le choix d’application utilise l’API Windows de capture par processus et inclut ses processus enfants,
+pour prendre en charge les navigateurs et les applications Electron. Les autres applications sont exclues.
+Pour un navigateur, le son des onglets de ce même navigateur est inclus.
+Ce mode nécessite **Windows 11**, ou Windows build 20348 minimum. Sur les versions plus anciennes,
+le mode **Tout le son Windows** reste disponible via WASAPI loopback (PyAudioWPatch).
+La source choisie est mémorisée. Si l’application est fermée, la capture attend son retour et tente
+de se reconnecter au même exécutable, sans basculer sur le son global. Aucun réglage du mélangeur Windows n’est changé.
 Le microphone n'est jamais ouvert. Le son n'est ni enregistré sur disque ni envoyé sur Internet.
 Après un changement de casque/sortie, utiliser **Relancer capture audio**.
 Une capture impossible est signalée ; le silence ne déclenche pas de faux spectre musical.
@@ -44,7 +53,8 @@ Les préférences du profil utilisateur sont conservées.
 
 ## Compilation et futures versions
 
-Python 3.12 x64 et Inno Setup 6. Dépendances épinglées dans `requirements.txt`.
+Python 3.12 x64, outils de compilation MSVC C++ avec SDK Windows 20348+ et Inno Setup 6.
+Dépendances épinglées dans `requirements.txt`. Le build compile aussi le pont natif de capture par application.
 
 ```powershell
 python -m venv .venv
@@ -69,4 +79,9 @@ Un tag `vX.Y.Z` doit correspondre à la version du code.
 Ce mode joue volontairement une courte tonalité de 1 kHz, mesure les échantillons capturés,
 vérifie leur arrivée dans le rendu, prend une capture PNG et produit un rapport JSON.
 Le workflow utilise un test de rendu sans imposer de matériel audio au runner GitHub.
+Le test matériel optionnel `tests/integration_application_capture.py` joue deux tonalités depuis deux
+programmes distincts, capture uniquement le premier (y compris son processus enfant), puis vérifie
+l’exclusion du second, la pause et la reprise. Compiler le lecteur de test avec
+`./tools/build-native.ps1 -BuildTestPlayer`, puis exécuter le script en lui passant un chemin de rapport JSON.
+Le pont natif suit les API documentées par [Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params).
 Les dépendances Qt/PySide6, NumPy, PyAudioWPatch et packaging conservent leurs licences respectives, jointes à l'application.

@@ -11,6 +11,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'app'))
 from audio import spectrum, N
 from updates import parse_release, download_update, Update, trusted_url
 from version import REPOSITORY
+from process_audio import resolve_source
+
+
+class SourceTests(unittest.TestCase):
+    def test_closed_application_never_becomes_system_audio(self):
+        self.assertIsNone(resolve_source({'mode': 'application', 'path': 'C:/Spotify.exe'}, []))
+
+    def test_restart_follows_path_and_rejects_reused_pid(self):
+        saved = {'mode': 'application', 'path': 'C:/Spotify.exe', 'pid': 10, 'created': 1}
+        foreign = {'mode': 'application', 'path': 'C:/Other.exe', 'pid': 10, 'created': 2}
+        restarted = {'mode': 'application', 'path': 'c:/spotify.EXE', 'pid': 20, 'created': 3}
+        self.assertIsNone(resolve_source(saved, [foreign]))
+        self.assertEqual(resolve_source(saved, [foreign, restarted]), restarted)
+
+    def test_system_mode_stays_system(self):
+        self.assertEqual(resolve_source({'mode': 'system'}, [])['mode'], 'system')
 
 
 class AudioTests(unittest.TestCase):
@@ -27,15 +43,15 @@ class AudioTests(unittest.TestCase):
 class UpdateTests(unittest.TestCase):
     def setUp(self):
         self.payload = b'MZ' + bytes(range(255)) * 4
-        self.name = 'ZelyvaroAudioLive-1.1.0-setup.exe'
-        self.url = f'https://github.com/{REPOSITORY}/releases/download/v1.1.0/{self.name}'
+        self.name = 'ZelyvaroAudioLive-99.0.0-setup.exe'
+        self.url = f'https://github.com/{REPOSITORY}/releases/download/v99.0.0/{self.name}'
         self.sha = hashlib.sha256(self.payload).hexdigest()
-        self.release = {'tag_name': 'v1.1.0', 'assets': [{'name': self.name,
+        self.release = {'tag_name': 'v99.0.0', 'assets': [{'name': self.name,
             'browser_download_url': self.url, 'digest': 'sha256:' + self.sha, 'size': len(self.payload)}]}
 
     def test_stable_newer_only(self):
-        self.assertEqual(parse_release(self.release).version, '1.1.0')
-        self.assertIsNone(parse_release(self.release, '1.1.0'))
+        self.assertEqual(parse_release(self.release).version, '99.0.0')
+        self.assertIsNone(parse_release(self.release, '99.0.0'))
         for changes in ({'draft': True}, {'prerelease': True}, {'tag_name': 'v2.0.0rc1'}, {'tag_name': 'bad'}):
             self.assertIsNone(parse_release({**self.release, **changes}))
 

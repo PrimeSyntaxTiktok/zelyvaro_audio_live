@@ -29,7 +29,7 @@ class AudioThread(QThread):
     status = Signal(str)
     issue = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, source=None):
         super().__init__(parent)
         self.frames = 0
         self.peak_rms = 0.0
@@ -37,9 +37,13 @@ class AudioThread(QThread):
         self.device = ''
         self.sample_rate = 0
         self.error = ''
+        self.source = source or {'mode': 'system'}
 
     def run(self):
         try:
+            if self.source.get('mode') == 'application':
+                self.run_application()
+                return
             # Callback mode keeps shutdown bounded even if the device is silent.
             with pa.PyAudio() as audio:
                 device = audio.get_default_wasapi_loopback()
@@ -88,4 +92,28 @@ class AudioThread(QThread):
 
     def stop(self):
         self.requestInterruption()
-        return self.wait(5000)
+        return self.wait(12000)
+
+    def run_application(self):
+        from process_audio import ProcessCapture
+        self.sample_rate = 48000
+        self.device = self.source['name']
+        rolling = np.empty((0, 2), dtype=np.float32)
+        with ProcessCapture(self.source) as capture:
+            self.status.emit('Application : ' + self.device)
+            last_data = time.monotonic()
+            while not self.isInterruptionRequested():
+                block = capture.read()
+                if len(block):
+                    self.frames += len(block)
+                    rolling = np.concatenate((rolling, block))[-N:]
+                    rms = float(np.sqrt(np.mean(block ** 2)))
+                    if rms > self.peak_rms:
+                        self.peak_rms = rms
+                        powers = np.mean(np.abs(np.fft.rfft(rolling, axis=0)) ** 2, axis=1)
+                        self.peak_hz = float(np.argmax(powers) * self.sample_rate / len(rolling))
+                    self.spectrumReady.emit(spectrum(rolling))
+                    last_data = time.monotonic()
+                elif time.monotonic() - last_data > .25:
+                    self.spectrumReady.emit([0] * (N // 2 + 1))
+                self.msleep(20)

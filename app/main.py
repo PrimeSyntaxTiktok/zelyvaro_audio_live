@@ -13,6 +13,8 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebChannel import QWebChannel
 
 from audio import AudioThread
+from process_audio import applications, resolve_source
+from source_dialog import SourceDialog
 from updates import latest_update, download_update
 from version import VERSION, APP, REPOSITORY
 
@@ -22,12 +24,17 @@ DATA_DIR = Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'ZelyvaroAudioLiv
 
 class Bridge(QObject):
     restartRequested = Signal()
+    sourceRequested = Signal()
     fullscreenRequested = Signal()
     cleanChanged = Signal(bool)
 
     @Slot()
     def restartAudio(self):
         self.restartRequested.emit()
+
+    @Slot()
+    def chooseAudio(self):
+        self.sourceRequested.emit()
 
     @Slot()
     def toggleFullscreen(self):
@@ -46,7 +53,7 @@ class MainWindow(QMainWindow):
     checkFinished = Signal()
     downloadFailed = Signal(str)
 
-    def __init__(self, probe=False):
+    def __init__(self, probe=False, source=None):
         super().__init__()
         self.setWindowTitle(f'{APP} {VERSION}')
         self.resize(450, 800)
@@ -57,6 +64,14 @@ class MainWindow(QMainWindow):
         self.checking = False
         self.downloading = False
         self.probe = probe
+        self.selected_source = source or {'mode': 'system', 'name': 'Tout le son Windows'}
+        if source is None and not probe:
+            try:
+                saved = json.loads((DATA_DIR / 'audio-source.json').read_text(encoding='utf8'))
+                if saved.get('mode') == 'application' and saved.get('path'):
+                    self.selected_source = saved
+            except (OSError, ValueError, AttributeError):
+                pass
         self.last_status = 'Capture Windows en cours de démarrage…'
         self.web = QWebEngineView()
         self.setCentralWidget(self.web)
@@ -65,6 +80,7 @@ class MainWindow(QMainWindow):
         self.channel.registerObject('desktopBridge', self.bridge)
         self.web.page().setWebChannel(self.channel)
         self.bridge.restartRequested.connect(self.start_audio)
+        self.bridge.sourceRequested.connect(self.choose_audio)
         self.bridge.fullscreenRequested.connect(self.toggle_fullscreen)
         self.bridge.cleanChanged.connect(lambda clean: self.menuBar().setVisible(not clean))
         self.web.loadFinished.connect(self.on_loaded)
@@ -72,7 +88,9 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.flush_audio)
         self.timer.start(40)
-        self.menuBar().addAction('Relancer capture audio', self.start_audio)
+        audio_menu = self.menuBar().addMenu('Audio')
+        audio_menu.addAction('Choisir l’application audio…', self.choose_audio)
+        audio_menu.addAction('Relancer la capture', self.start_audio)
         self.update_action = self.menuBar().addAction('Vérifier les mises à jour', lambda: self.check_updates(False))
         self.menuBar().addAction('Mode Live (H)', lambda: self.web.page().runJavaScript('window.toggleClean()'))
         self.updateFound.connect(self.install_update)
@@ -83,6 +101,9 @@ class MainWindow(QMainWindow):
         self.checkFinished.connect(self.check_finished)
         self.start_audio()
         if not probe:
+            self.source_timer = QTimer(self)
+            self.source_timer.timeout.connect(self.reconnect_source)
+            self.source_timer.start(5000)
             QTimer.singleShot(3000, lambda: self.check_updates(True))
             self.update_timer = QTimer(self)
             self.update_timer.timeout.connect(lambda: self.check_updates(True))
@@ -102,13 +123,48 @@ class MainWindow(QMainWindow):
         if self.audio is not None and not self.audio.stop():
             self.set_status('La capture précédente ne répond pas. Réessayez.')
             return
+        previous = self.audio
+        self.audio = None
+        if previous is not None:
+            previous.deleteLater()
         self.pending = None
+        if self.ready:
+            self.web.page().runJavaScript('window.clearDesktopAudio()')
+        if self.selected_source.get('mode') == 'application':
+            try:
+                resolved = resolve_source(self.selected_source, applications())
+            except Exception as exc:
+                self.set_status('Source audio indisponible : ' + str(exc))
+                return
+            if resolved is None:
+                self.set_status(self.selected_source.get('name', 'Application') + ' — en attente de l’application')
+                return
+            self.selected_source = resolved
         self.set_status('Capture Windows en cours de démarrage…')
-        self.audio = AudioThread(self)
-        self.audio.spectrumReady.connect(self.receive_audio)
-        self.audio.status.connect(self.set_status)
-        self.audio.issue.connect(self.audio_error)
-        self.audio.start()
+        worker = AudioThread(self, self.selected_source)
+        self.audio = worker
+        worker.spectrumReady.connect(lambda values: self.receive_audio(values) if self.audio is worker else None)
+        worker.status.connect(lambda status: self.set_status(status) if self.audio is worker else None)
+        worker.issue.connect(lambda issue: self.audio_error(issue) if self.audio is worker else None)
+        worker.start()
+
+    def choose_audio(self):
+        dialog = SourceDialog(self.selected_source, self)
+        if dialog.exec() != SourceDialog.DialogCode.Accepted:
+            return
+        source = dialog.source()
+        if source is None:
+            return
+        self.selected_source = source
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        temporary = DATA_DIR / 'audio-source.json.tmp'
+        temporary.write_text(json.dumps(source, ensure_ascii=False, indent=2), encoding='utf8')
+        temporary.replace(DATA_DIR / 'audio-source.json')
+        self.start_audio()
+
+    def reconnect_source(self):
+        if self.selected_source.get('mode') == 'application' and (self.audio is None or not self.audio.isRunning()):
+            self.start_audio()
 
     def receive_audio(self, values):
         self.pending = values
@@ -128,7 +184,9 @@ class MainWindow(QMainWindow):
         self.set_status('Capture indisponible — cliquer pour relancer')
         if self.ready:
             self.web.page().runJavaScript('window.clearDesktopAudio()')
-        if not self.probe:
+        if self.selected_source.get('mode') == 'application':
+            self.set_status(self.selected_source.get('name', 'Application') + ' — capture interrompue : ' + issue)
+        elif not self.probe:
             QMessageBox.warning(self, 'Capture audio Windows', issue + '\n\nActivez une sortie audio Windows, puis utilisez « Relancer capture audio ».')
 
     def check_updates(self, silent):
@@ -204,12 +262,19 @@ def main():
     parser.add_argument('--play-test-tone', action='store_true')
     parser.add_argument('--require-audio', action='store_true')
     parser.add_argument('--gallery', action='store_true')
+    parser.add_argument('--source-pid', type=int)
+    parser.add_argument('--expect-tone-hz', type=float)
     args = parser.parse_args()
     app = QApplication([sys.argv[0]])
     app.setOrganizationName('ZELYVARO')
     app.setApplicationName('ZelyvaroAudioLive')
     app.setApplicationVersion(VERSION)
-    window = MainWindow(probe=bool(args.self_test))
+    source = None
+    if args.source_pid:
+        source = next((item for item in applications() if item['pid'] == args.source_pid), None)
+        if source is None:
+            raise RuntimeError('Cette application n’a pas de session audio Windows disponible.')
+    window = MainWindow(probe=bool(args.self_test), source=source)
     window.show()
     if args.self_test:
         from probe import run_probe

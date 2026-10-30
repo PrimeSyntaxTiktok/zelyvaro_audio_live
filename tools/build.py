@@ -35,4 +35,5 @@ for package in ('PySide6', 'PySide6-Addons', 'PySide6-Essentials', 'shiboken6', 
 PyInstaller.__main__.run(['--noconfirm', '--clean', '--onedir', '--windowed', '--name', APP,
     '--version-file', str(version_file), '--add-data', 'app/wallpaper.html;.',
     '--add-data', 'app/themes.js;.',
+    '--add-binary', 'build/native/zelyvaro_capture.dll;.',
     '--add-data', str(licenses) + ';licenses', '--collect-all', 'pyaudiowpatch', 'app/main.py'])

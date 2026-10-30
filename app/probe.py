@@ -45,6 +45,21 @@ def run_probe(app, window, args):
     def finish():
         report['web_loaded'] = window.ready
         audio = window.audio
+        from process_audio import library, supported
+        try:
+            library()
+            report['native_audio_bridge_loaded'] = True
+        except Exception as exc:
+            report['native_audio_bridge_loaded'] = False
+            report['native_audio_bridge_error'] = str(exc)
+        report['application_capture_supported'] = supported()
+        report['source_mode'] = window.selected_source.get('mode')
+        if audio is None:
+            report.update(passed=False, audio_error=window.last_status)
+            args.self_test.write_text(json.dumps(report, indent=2), encoding='utf8')
+            window.close()
+            app.exit(1)
+            return
         report.update(device=audio.device, captured_frames=audio.frames,
                       sample_rate=audio.sample_rate, peak_rms=audio.peak_rms,
                       peak_hz=audio.peak_hz, audio_error=audio.error)
@@ -54,6 +69,7 @@ def run_probe(app, window, args):
             report['renderer'] = json.loads(value) if value else {}
             report['javascript_bridge'] = report['renderer'].get('bridge', False)
             report['passed'] = bool(report['web_loaded'] and report['javascript_bridge']
+                                    and report['native_audio_bridge_loaded']
                                     and report['renderer'].get('canvas') and report['renderer'].get('animation_frames', 0) > 30
                                     and not report['renderer'].get('errors'))
             if args.require_audio:
@@ -61,6 +77,8 @@ def run_probe(app, window, args):
                                          report['renderer'].get('frames', 0) > 0)
             if args.play_test_tone:
                 report['passed'] &= bool(audio.peak_rms > .0001 and abs(audio.peak_hz - 1000) < 50)
+            if args.expect_tone_hz is not None:
+                report['passed'] &= bool(audio.peak_rms > .0001 and abs(audio.peak_hz - args.expect_tone_hz) < 30)
             if args.gallery:
                 report['passed'] &= len(set(report['themes'].values())) == 6
             args.self_test.parent.mkdir(parents=True, exist_ok=True)
