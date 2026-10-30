@@ -106,17 +106,16 @@ class LiveServer:
                     return
                 if parsed.path == '/live' and output_format and parse_qs(parsed.query).get('stage') != ['1']:
                     _, width, height, _ = FORMATS[output_format]
-                    # The inner viewport fixes composition and aspect ratio even if the
-                    # host browser source has a different size. Never stretch the scene.
+                    # The host owns its viewport and scene transform. Fill every pixel
+                    # it supplies; a fixed contain-scaled iframe creates black bars
+                    # when TikTok initializes a portrait link with a landscape viewport.
                     source = f'/live?key={owner.token}&amp;format={output_format}&amp;stage=1'
                     body = (f'<!doctype html><html lang="fr"><meta charset="utf-8"><title>ZELYVARO · {width} × {height}</title>'
-                            '<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}'
-                            f'iframe{{position:absolute;border:0;width:{width}px;height:{height}px;transform-origin:top left}}</style>'
-                            f'<iframe id="stage" title="Diffusion {width} × {height}" src="{source}"></iframe>'
-                            '<script>function fit(){const s=document.getElementById("stage");'
-                            f'const z=Math.min(innerWidth/{width},innerHeight/{height});'
-                            f's.style.left=((innerWidth-{width}*z)/2)+"px";s.style.top=((innerHeight-{height}*z)/2)+"px";'
-                            's.style.transform="scale("+z+")";}addEventListener("resize",fit);fit();</script></html>').encode('utf8')
+                            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                            '<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}'
+                            'iframe{display:block;position:fixed;inset:0;border:0;width:100%;height:100%}</style>'
+                            f'<body data-format="{output_format}" data-target-width="{width}" data-target-height="{height}">'
+                            f'<iframe id="stage" title="Diffusion {width} × {height}" src="{source}"></iframe></body></html>').encode('utf8')
                     self.send_response(200)
                     self.send_header('Content-Type', 'text/html; charset=utf-8')
                     self.send_header('Content-Length', str(len(body)))

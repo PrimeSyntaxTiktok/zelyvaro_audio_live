@@ -46,4 +46,7 @@ class StreamFormatDialog(QDialog):
 
     def update_hint(self):
         _, width, height, _ = FORMATS[self.selected_format]
-        self.hint.setText(f'Dans TikTok Studio ou OBS, régler la source Navigateur à {width} × {height} pour remplir le cadre. Le lien conserve ce format ; une autre taille affiche des bandes sans étirer la scène. Le logiciel de live garde le contrôle des dimensions de sa source.')
+        self.hint.setText(f'Le rendu remplit toute la source, sans bandes ajoutées.\n\n'
+                          f'Dans TikTok : ouvrir les propriétés du Lien, activer la résolution personnalisée et saisir {width} × {height}. Agrandir ensuite la source pour couvrir la scène.\n\n'
+                          f'Dans OBS : régler Largeur {width}, Hauteur {height}, puis Transformation → Ajuster à l’écran.\n\n'
+                          'Le lien ne peut pas agrandir lui-même un petit cadre placé dans TikTok ou OBS.')

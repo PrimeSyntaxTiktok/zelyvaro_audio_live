@@ -116,12 +116,12 @@ class LiveServerTests(unittest.TestCase):
                 self.assertNotEqual(first.token,second.token)
                 for server in (first,second):
                     with urlopen(server.formatted_url('landscape'),timeout=2) as response:
-                        self.assertIn(b'width:1920px',response.read())
+                        self.assertIn(b'data-target-width="1920"',response.read())
             finally:
                 first.close()
                 second.close()
 
-    def test_explicit_formats_keep_fixed_viewport_and_legacy_links_work(self):
+    def test_formats_fill_host_without_letterboxing_and_legacy_links_work(self):
         with tempfile.TemporaryDirectory() as directory:
             server=LiveServer(Path(__file__).resolve().parents[1]/'app',directory)
             try:
@@ -129,7 +129,10 @@ class LiveServerTests(unittest.TestCase):
                     url=server.formatted_url(mode)
                     with urlopen(url,timeout=2) as response:
                         html=response.read().decode('utf8')
-                    self.assertIn(f'width:{width}px;height:{height}px',html)
+                    self.assertIn(f'data-target-width="{width}" data-target-height="{height}"',html)
+                    self.assertIn('width:100%;height:100%',html)
+                    self.assertNotIn('transform:scale',html)
+                    self.assertNotIn('Math.min(innerWidth',html)
                     self.assertIn('stage=1',html)
                     self.assertIn(f'format={mode}',html)
                     with urlopen(url.split('#')[0]+'&stage=1',timeout=2) as response:

@@ -70,10 +70,11 @@ def start(window, report):
     QTimer.singleShot(3200, close_to_tray)
 
     def snapshot(tag):
-        script = '''(()=>{const f=document.getElementById('stage'),w=f?.contentWindow,r=f?.getBoundingClientRect();return JSON.stringify({width:w?.innerWidth,height:w?.innerHeight,frames:w?.sceneEngine?.frameCount||0,rect:r?{w:r.width,h:r.height}:null,errors:w?.jsErrors||[]});})()'''
+        script = '''(()=>{const f=document.getElementById('stage'),w=f?.contentWindow,r=f?.getBoundingClientRect(),c=w?.document.getElementById('visual')?.getBoundingClientRect();return JSON.stringify({hostWidth:innerWidth,hostHeight:innerHeight,width:w?.innerWidth,height:w?.innerHeight,frames:w?.sceneEngine?.frameCount||0,rect:r?{x:r.x,y:r.y,w:r.width,h:r.height}:null,canvas:c?{x:c.x,y:c.y,w:c.width,h:c.height}:null,edgesCovered:[[1,1],[innerWidth-1,1],[1,innerHeight-1],[innerWidth-1,innerHeight-1]].every(([x,y])=>document.elementFromPoint(x,y)===f),errors:w?.jsErrors||[]});})()'''
         for mode, view in window.format_views.items():
             view.page().runJavaScript(script, lambda value, mode=mode: checks['views'].setdefault(mode, {}).__setitem__(tag, json.loads(value) if value else {}))
     QTimer.singleShot(4200, lambda: snapshot('first'))
+    QTimer.singleShot(6000, lambda: window.format_views['portrait'].resize(450, 800))
     QTimer.singleShot(8500, lambda: snapshot('last'))
 
 
@@ -89,10 +90,15 @@ def finish(window, report):
         first, last = item.get('first', {}), item.get('last', {})
         copied = checks['copies'].get(mode, {})
         passed &= bool(copied.get('copied_format') == mode and copied.get('saved') == mode and
-                       last.get('width') == width and last.get('height') == height and
                        first.get('frames', 0) > 0 and last.get('frames', 0) > first.get('frames', 0) + 5 and
-                       not last.get('errors') and last.get('rect') and
-                       abs(last['rect']['w'] / last['rect']['h'] - width / height) < .001)
+                       not last.get('errors'))
+        for sample in (first, last):
+            rect, canvas = sample.get('rect', {}), sample.get('canvas', {})
+            passed &= bool(sample.get('edgesCovered') and sample.get('width') == sample.get('hostWidth') and
+                           sample.get('height') == sample.get('hostHeight') and
+                           rect.get('x') == rect.get('y') == canvas.get('x') == canvas.get('y') == 0 and
+                           rect.get('w') == canvas.get('w') == sample.get('hostWidth') and
+                           rect.get('h') == canvas.get('h') == sample.get('hostHeight'))
         path = report.get('format_screenshot_base')
         if path:
             window.format_views[mode].grab().save(str(path.with_name(path.stem + '-' + mode + '.png')))
