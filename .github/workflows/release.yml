@@ -67,6 +67,6 @@ jobs:
           $tag = 'v${{ steps.version.outputs.value }}'
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) { Write-Host 'Release already exists; existing binaries remain unchanged.'; exit 0 }
-          gh release create $tag output/*-setup.exe output/*.zip output/*.sha256 --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "ZELYVARO Audio Live $tag" --notes 'Windows x64. Choix de l’application audio (Windows 11 / build 20348+) ou de tout le son Windows, six décors animés, reconnexion à la source et mises à jour GitHub vérifiées par SHA-256. Installateur par utilisateur. Binaire non signé.' --latest
+          gh release create $tag output/*-setup.exe output/*.zip output/*.sha256 --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "ZELYVARO Audio Live $tag" --notes-file RELEASE_NOTES.md --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
 
