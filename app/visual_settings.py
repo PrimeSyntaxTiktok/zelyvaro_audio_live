@@ -15,6 +15,7 @@ def validated(value):
         if isinstance(number, (float, int)) and math.isfinite(number):
             result[key] = min(high, max(low, number))
     result['fps'] = 30 if value.get('fps') == 30 else 60
+    result['quality'] = '1080' if value.get('quality') == '1080' else '4k'
     for key, options in (('effects', EFFECTS), ('particles', PARTICLES)):
         if isinstance(value.get(key), list):
             result[key] = list(dict.fromkeys(item for item in value[key] if isinstance(item, str) and item in options))

@@ -20,7 +20,7 @@ from PySide6.QtWebEngineCore import QWebEnginePage
 from audio import AudioThread
 from process_audio import applications, resolve_source, media_info
 from source_dialog import SourceDialog
-from stream_format import StreamFormatDialog, FORMATS
+from stream_format import StreamFormatDialog, FORMATS, format_dimensions
 from single_instance import SingleInstance, activate_legacy_instance
 import background
 from live_server import LiveServer, preserve_existing_port
@@ -186,6 +186,9 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.flush_audio)
         self.timer.start(25)
+        self.resolution_timer = QTimer(self)
+        self.resolution_timer.timeout.connect(self.send_stream_diagnostics)
+        self.resolution_timer.start(1000)
         audio_menu = self.menuBar().addMenu('Audio')
         audio_menu.addAction('Choisir l’application audio…', self.choose_audio)
         audio_menu.addAction('Relancer la capture', self.start_audio)
@@ -382,7 +385,7 @@ class MainWindow(QMainWindow):
         self.send_logo()
 
     def copy_stream_link(self):
-        dialog = StreamFormatDialog(self.stream_format, self)
+        dialog = StreamFormatDialog(self.stream_format, self, self.visual_settings.get('quality', '4k'))
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         self.stream_format = dialog.selected_format
@@ -391,10 +394,14 @@ class MainWindow(QMainWindow):
         pending.write_text(json.dumps({'format': self.stream_format}), encoding='utf8')
         pending.replace(DATA_DIR / 'stream-output.json')
         QApplication.clipboard().setText(self.live.formatted_url(self.stream_format))
-        label, width, height, _ = FORMATS[self.stream_format]
+        label, width, height, _ = format_dimensions(self.stream_format, self.visual_settings.get('quality', '4k'))
         message = f'Lien {label.lower()} copié · {width} × {height}'
         self.statusBar().showMessage(message, 8000)
         self.web.page().runJavaScript('window.setStreamCopied(' + json.dumps(message) + ')')
+
+    def send_stream_diagnostics(self):
+        if self.ready:
+            self.web.page().runJavaScript('window.setStreamDiagnostics?.(' + json.dumps(self.live.viewport_state()) + ',' + str(self.live.clients) + ')')
 
     def open_live_output(self):
         if not hasattr(self, 'live_view'):

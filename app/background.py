@@ -20,8 +20,8 @@ def import_background(source, directory):
     size = reader.size()
     if not size.isValid() or max(size.width(), size.height()) > 24000:
         raise ValueError('Dimensions d’image invalides ou trop grandes.')
-    if max(size.width(), size.height()) > 2560:
-        reader.setScaledSize(size.scaled(2560, 2560, Qt.AspectRatioMode.KeepAspectRatio))
+    if max(size.width(), size.height()) > 4096:
+        reader.setScaledSize(size.scaled(4096, 4096, Qt.AspectRatioMode.KeepAspectRatio))
     image = reader.read()
     if image.isNull():
         raise ValueError('Impossible de lire cette image : ' + reader.errorString())

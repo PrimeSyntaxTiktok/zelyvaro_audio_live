@@ -57,7 +57,7 @@ def start(window, report):
     QTimer.singleShot(2600, lambda: copy('landscape', True))
 
     def check_studio():
-        script = '''(()=>{const states=[];for(const tab of document.querySelectorAll('[data-pane]')){tab.click();states.push(document.querySelectorAll('.settings-pane:not([hidden])').length===1&&tab.getAttribute('aria-selected')==='true');}window.applyVisualSettings({overlays:{track:{mode:'manual',manualArtist:'Artiste test',manualTitle:'Titre test',visible:true,locked:true,weight:400}}});window.overlayController.refresh();const n=document.querySelector('[data-kind=track]'),label=n.querySelector('.track-label');return JSON.stringify({tabs:states.length===4&&states.every(Boolean),track:label?.textContent,bold:getComputedStyle(n).fontWeight==='700',singleLine:label?.getClientRects().length===1,transparentMusicIcon:!!n.querySelector('svg.music-icon[fill=none]'),errors:window.jsErrors});})()'''
+        script = '''(()=>{const states=[];for(const tab of document.querySelectorAll('[data-pane]')){tab.click();states.push(document.querySelectorAll('.settings-pane:not([hidden])').length===1&&tab.getAttribute('aria-selected')==='true');}window.applyVisualSettings({overlays:{track:{mode:'manual',manualArtist:'Artiste test',manualTitle:'Titre test',visible:true,locked:true,weight:400}}});const controller=window.overlayController;controller.refresh();const n=document.querySelector('[data-kind=track]'),label=n.querySelector('.track-label'),svg=n.querySelector('svg.music-icon');const result={tabs:states.length===4&&states.every(Boolean),track:label?.textContent,bold:getComputedStyle(n).fontWeight==='700',singleLine:label?.getClientRects().length===1,transparentMusicIcon:!!svg&&svg.getAttribute('fill')==='currentColor'&&getComputedStyle(svg).backgroundColor==='rgba(0, 0, 0, 0)',errors:window.jsErrors};window.visualSettings.overlays.track.manualTitle='Un titre suffisamment long pour dépasser nettement la largeur disponible et vérifier son défilement continu de droite à gauche';controller.refresh();const title=n.querySelector('.track-title'),animation=controller.marquee;result.longTitleScrolls=title.dataset.scrolling==='true'&&!!animation;if(animation){animation.pause();animation.currentTime=2600;const before=new DOMMatrix(getComputedStyle(title).transform).m41;controller.setTrack({...controller.track});result.metadataDoesNotRestart=controller.marquee===animation;animation.currentTime=3600;const after=new DOMMatrix(getComputedStyle(title).transform).m41;result.scrollsRightToLeft=after<before-1;result.scrollSpeedPerFont=Number(title.dataset.speed)/parseFloat(getComputedStyle(n).fontSize);}window.visualSettings.overlays.track.manualTitle='Titre court';controller.refresh();result.shortTitleStops=title.dataset.scrolling==='false'&&!controller.marquee;return JSON.stringify(result);})()'''
         window.web.page().runJavaScript(script, lambda value: checks.__setitem__('studio', json.loads(value) if value else {}))
     QTimer.singleShot(2900, check_studio)
 
@@ -70,7 +70,7 @@ def start(window, report):
     QTimer.singleShot(3200, close_to_tray)
 
     def snapshot(tag):
-        script = '''(()=>{const f=document.getElementById('stage'),w=f?.contentWindow,r=f?.getBoundingClientRect(),c=w?.document.getElementById('visual')?.getBoundingClientRect();return JSON.stringify({hostWidth:innerWidth,hostHeight:innerHeight,width:w?.innerWidth,height:w?.innerHeight,frames:w?.sceneEngine?.frameCount||0,rect:r?{x:r.x,y:r.y,w:r.width,h:r.height}:null,canvas:c?{x:c.x,y:c.y,w:c.width,h:c.height}:null,edgesCovered:[[1,1],[innerWidth-1,1],[1,innerHeight-1],[innerWidth-1,innerHeight-1]].every(([x,y])=>document.elementFromPoint(x,y)===f),errors:w?.jsErrors||[]});})()'''
+        script = '''(()=>{const f=document.getElementById('stage'),w=f?.contentWindow,r=f?.getBoundingClientRect(),canvas=w?.document.getElementById('visual'),c=canvas?.getBoundingClientRect();return JSON.stringify({hostWidth:innerWidth,hostHeight:innerHeight,width:w?.innerWidth,height:w?.innerHeight,renderWidth:canvas?.width,renderHeight:canvas?.height,quality:w?.visualSettings?.quality,frames:w?.sceneEngine?.frameCount||0,rect:r?{x:r.x,y:r.y,w:r.width,h:r.height}:null,canvas:c?{x:c.x,y:c.y,w:c.width,h:c.height}:null,edgesCovered:[[1,1],[innerWidth-1,1],[1,innerHeight-1],[innerWidth-1,innerHeight-1]].every(([x,y])=>document.elementFromPoint(x,y)===f),errors:w?.jsErrors||[]});})()'''
         for mode, view in window.format_views.items():
             view.page().runJavaScript(script, lambda value, mode=mode: checks['views'].setdefault(mode, {}).__setitem__(tag, json.loads(value) if value else {}))
     QTimer.singleShot(4200, lambda: snapshot('first'))
@@ -85,12 +85,16 @@ def finish(window, report):
     studio = checks.get('studio', {})
     passed &= bool(studio.get('tabs') and studio.get('bold') and studio.get('singleLine') and
                    studio.get('transparentMusicIcon') and studio.get('track') == 'Artiste test — Titre test' and not studio.get('errors'))
+    passed &= bool(studio.get('longTitleScrolls') and studio.get('metadataDoesNotRestart') and
+                   studio.get('scrollsRightToLeft') and studio.get('shortTitleStops') and
+                   1 <= studio.get('scrollSpeedPerFont',0) <= 1.6)
     for mode, (_, width, height, _) in FORMATS.items():
         item = checks['views'].get(mode, {})
         first, last = item.get('first', {}), item.get('last', {})
         copied = checks['copies'].get(mode, {})
         passed &= bool(copied.get('copied_format') == mode and copied.get('saved') == mode and
-                       first.get('frames', 0) > 0 and last.get('frames', 0) > first.get('frames', 0) + 5 and
+                       first.get('frames', 0) > 0 and last.get('frames', 0) > first.get('frames', 0) and
+                       last.get('renderWidth') == width and last.get('renderHeight') == height and last.get('quality') == '4k' and
                        not last.get('errors'))
         for sample in (first, last):
             rect, canvas = sample.get('rect', {}), sample.get('canvas', {})

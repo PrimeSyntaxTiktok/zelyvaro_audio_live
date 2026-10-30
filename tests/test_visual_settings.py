@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 from urllib.error import HTTPError
 from PySide6.QtGui import QImage, QColor
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
@@ -13,6 +13,11 @@ import background
 
 
 class SettingsTests(unittest.TestCase):
+    def test_4k_is_default_and_full_hd_requires_explicit_choice(self):
+        self.assertEqual(validated({})['quality'],'4k')
+        self.assertEqual(validated({'quality':'invalid'})['quality'],'4k')
+        self.assertEqual(validated({'quality':'1080'})['quality'],'1080')
+
     def test_composition_retains_multiple_effects_and_particles(self):
         item={'id':'user-1','name':'Mon thème','effects':['rings','spectrum'],'particles':['bubbles','stars'],
               'colorA':'#123456','colorB':'#abcdef'}
@@ -40,6 +45,17 @@ class SettingsTests(unittest.TestCase):
 
 
 class BackgroundTests(unittest.TestCase):
+    def test_portrait_4k_image_keeps_its_native_dimensions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory)
+            image=QImage(2160,3840,QImage.Format.Format_RGB32)
+            image.fill(QColor('#3a5480'))
+            source=folder/'4k.png'
+            self.assertTrue(image.save(str(source)))
+            background.import_background(source,folder/'profile')
+            restored=QImage(str(folder/'profile/background.png'))
+            self.assertEqual((restored.width(),restored.height()),(2160,3840))
+
     def test_import_is_copied_and_survives_source_removal(self):
         with tempfile.TemporaryDirectory() as directory:
             folder=Path(directory)
@@ -69,6 +85,25 @@ class BackgroundTests(unittest.TestCase):
 
 
 class LiveServerTests(unittest.TestCase):
+    def test_received_resolution_is_authenticated_and_validated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            server=LiveServer(Path(__file__).resolve().parents[1]/'app',directory)
+            value={'id':'test-client','format':'portrait','quality':'4k','width':2160,'height':3840,'renderWidth':2160,'renderHeight':3840}
+            try:
+                url=f'http://127.0.0.1:{server.port}/viewport?key={server.token}'
+                request=Request(url,data=json.dumps(value).encode(),headers={'Content-Type':'application/json'})
+                with urlopen(request,timeout=2) as response:self.assertEqual(response.status,204)
+                self.assertEqual(server.viewport_state()[0]['width'],2160)
+                bad={**value,'width':999999}
+                with self.assertRaises(HTTPError) as error:
+                    urlopen(Request(url,data=json.dumps(bad).encode(),headers={'Content-Type':'application/json'}),timeout=2)
+                self.assertEqual(error.exception.code,400)
+                with self.assertRaises(HTTPError) as error:
+                    urlopen(Request(url.replace(server.token,'wrong'),data=json.dumps(value).encode()),timeout=2)
+                self.assertEqual(error.exception.code,403)
+            finally:
+                server.close()
+
     def test_migration_adopts_the_existing_personal_source(self):
         with tempfile.TemporaryDirectory() as directory:
             server=LiveServer(Path(__file__).resolve().parents[1]/'app',directory)
@@ -116,7 +151,7 @@ class LiveServerTests(unittest.TestCase):
                 self.assertNotEqual(first.token,second.token)
                 for server in (first,second):
                     with urlopen(server.formatted_url('landscape'),timeout=2) as response:
-                        self.assertIn(b'data-target-width="1920"',response.read())
+                        self.assertIn(b'data-target-width="3840"',response.read())
             finally:
                 first.close()
                 second.close()
@@ -125,7 +160,7 @@ class LiveServerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             server=LiveServer(Path(__file__).resolve().parents[1]/'app',directory)
             try:
-                for mode,width,height in [('portrait',1080,1920),('landscape',1920,1080)]:
+                for mode,width,height in [('portrait',2160,3840),('landscape',3840,2160)]:
                     url=server.formatted_url(mode)
                     with urlopen(url,timeout=2) as response:
                         html=response.read().decode('utf8')

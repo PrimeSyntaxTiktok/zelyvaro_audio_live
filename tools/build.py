@@ -23,6 +23,8 @@ version_file = build / 'version-info.txt'
 version_file.write_text(str(info), encoding='utf8')
 licenses = build / 'licenses'
 licenses.mkdir(exist_ok=True)
+if (ROOT / 'third_party_licenses').exists():
+    shutil.copytree(ROOT / 'third_party_licenses', licenses, dirs_exist_ok=True)
 for package in ('PySide6', 'PySide6-Addons', 'PySide6-Essentials', 'shiboken6', 'numpy', 'PyAudioWPatch', 'packaging'):
     dist = metadata.distribution(package)
     for file in dist.files or []:

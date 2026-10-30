@@ -9,7 +9,7 @@ import socket
 import struct
 import threading
 import time
-from stream_format import FORMATS
+from stream_format import FORMATS, format_dimensions
 from urllib.parse import urlsplit, parse_qs
 from urllib.request import urlopen
 
@@ -74,6 +74,8 @@ class LiveServer:
         self.clients = 0
         self.audio_packets = 0
         self.stopping = False
+        self.output_quality = '4k'
+        self.viewports = {}
         owner = self
         port_file = profile / 'stream-port.json'
         try:
@@ -93,6 +95,46 @@ class LiveServer:
             protocol_version = 'HTTP/1.1'
             def log_message(self, *args):
                 pass
+            def do_POST(self):
+                parsed = urlsplit(self.path)
+                token = parse_qs(parsed.query).get('key', [''])[0]
+                if (self.headers.get('Host', '') not in (f'127.0.0.1:{owner.port}', f'localhost:{owner.port}')
+                        or not hmac.compare_digest(token, owner.token)):
+                    self.send_error(403)
+                    return
+                if parsed.path != '/viewport':
+                    self.send_error(404)
+                    return
+                try:
+                    length = int(self.headers.get('Content-Length', 0))
+                    if not 0 < length <= 2048:
+                        raise ValueError('Invalid size')
+                    value = json.loads(self.rfile.read(length))
+                    client = value['id']
+                    if not isinstance(client, str) or not 1 <= len(client) <= 80:
+                        raise ValueError('Invalid client')
+                    mode = value['format']
+                    quality = value['quality']
+                    if mode not in FORMATS or quality not in ('4k', '1080'):
+                        raise ValueError('Invalid format')
+                    item = {'format': mode, 'quality': quality}
+                    for field in ('width', 'height', 'renderWidth', 'renderHeight'):
+                        number = value[field]
+                        if type(number) is not int or not 1 <= number <= 16384:
+                            raise ValueError('Invalid dimensions')
+                        item[field] = number
+                    item['seen'] = time.monotonic()
+                    with owner.condition:
+                        owner.viewports = {key: data for key, data in owner.viewports.items()
+                                           if item['seen'] - data['seen'] < 30}
+                        if len(owner.viewports) < 32 or client in owner.viewports:
+                            owner.viewports[client] = item
+                except (ValueError, TypeError, KeyError):
+                    self.send_error(400)
+                    return
+                self.send_response(204)
+                self.send_header('Content-Length', '0')
+                self.end_headers()
             def do_GET(self):
                 parsed = urlsplit(self.path)
                 token = parse_qs(parsed.query).get('key', [''])[0]
@@ -105,7 +147,7 @@ class LiveServer:
                     self.send_error(400, 'Unknown output format')
                     return
                 if parsed.path == '/live' and output_format and parse_qs(parsed.query).get('stage') != ['1']:
-                    _, width, height, _ = FORMATS[output_format]
+                    _, width, height, _ = format_dimensions(output_format, owner.output_quality)
                     # The host owns its viewport and scene transform. Fill every pixel
                     # it supplies; a fixed contain-scaled iframe creates black bars
                     # when TikTok initializes a portrait link with a landscape viewport.
@@ -124,6 +166,7 @@ class LiveServer:
                     self.wfile.write(body)
                     return
                 if parsed.path == '/events':
+                    client_id = parse_qs(parsed.query).get('client', [''])[0]
                     self.send_response(200)
                     self.send_header('Content-Type', 'text/event-stream')
                     self.send_header('Cache-Control', 'no-cache, no-store')
@@ -148,6 +191,8 @@ class LiveServer:
                     finally:
                         with owner.condition:
                             owner.clients -= 1
+                            if client_id:
+                                owner.viewports.pop(client_id, None)
                     return
                 if parsed.path == '/health':
                     body = json.dumps({'audio_packets': owner.audio_packets, 'clients': owner.clients}).encode()
@@ -206,11 +251,18 @@ class LiveServer:
     def publish(self, kind, payload):
         data = json.dumps(payload, ensure_ascii=True, separators=(',', ':'))
         with self.condition:
+            if kind == 'settings' and isinstance(payload, dict):
+                self.output_quality = '1080' if payload.get('quality') == '1080' else '4k'
             self.serial += 1
             self.events[kind] = (self.serial, data)
             if kind == 'audio':
                 self.audio_packets += 1
             self.condition.notify_all()
+
+    def viewport_state(self):
+        with self.condition:
+            return [dict(value) for value in self.viewports.values()
+                    if time.monotonic() - value['seen'] < 30]
 
     def close(self):
         self.stopping = True
