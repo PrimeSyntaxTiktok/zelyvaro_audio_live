@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZELYVARO Audio Live</title>
+<style>
+:root{color-scheme:dark;--accent:#af66ff;--accent2:#20c8ff}*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:#060512;font-family:Inter,Segoe UI,Arial,sans-serif;color:white}canvas{position:absolute;inset:0;width:100%;height:100%}.brand{position:absolute;top:38%;left:0;width:100%;text-align:center;pointer-events:none;text-shadow:0 0 28px #bc68ff80}.mark{font-size:clamp(48px,18vw,105px);font-weight:950;letter-spacing:-.16em;padding-right:.16em;line-height:1}.name{font-weight:800;font-size:clamp(14px,4.6vw,23px);letter-spacing:.4em;margin-top:20px;margin-left:.4em}.sub{font-size:10px;letter-spacing:.42em;color:#b8b4d3;margin-top:15px}.top{position:absolute;top:30px;left:0;right:0;text-align:center;font-size:9px;color:#a19dbf;letter-spacing:.4em}.foot{position:absolute;bottom:35px;left:0;right:0;text-align:center;font-size:9px;letter-spacing:.25em;color:#a19dbf}.panel{position:absolute;bottom:75px;left:5%;width:90%;padding:14px;border-radius:16px;background:#111127cc;backdrop-filter:blur(18px);border:1px solid #ffffff20;display:flex;align-items:center;gap:12px;justify-content:space-between;font-size:11px}.panel select,.panel button{color:white;background:#28233e;border:1px solid #ffffff22;padding:8px;border-radius:8px}.panel input{width:60px;accent-color:var(--accent)}body.clean .panel{display:none}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#5df0be;margin-right:5px;box-shadow:0 0 12px #5df0be}
+</style></head><body><canvas id="visual"></canvas><div class="top">ZELYVARO / AUDIO REACTIVE EXPERIENCE</div><div class="brand"><div class="mark">Z</div><div class="name">ZELYVARO</div><div class="sub">SOUND IN MOTION</div></div><div class="panel"><span><span class="dot"></span><span id="status">WAITING FOR AUDIO</span></span><select id="palette"><option value="violet">Violet</option><option value="blue">Ice blue</option><option value="red">Red</option><option value="gold">Gold</option></select><label>Gain <input id="gain" type="range" min="1" max="8" value="3"></label><button id="demo">Demo</button></div><div class="foot">ZELYVARO AUDIO LIVE · TIKTOK 9:16</div>
+<script>
+const canvas=document.getElementById('visual'),ctx=canvas.getContext('2d'),status=document.getElementById('status');let W=0,H=0,D=1,t=0,level=0,bass=0,signal=new Array(72).fill(0),received=0,demo=false;
+let palette=['#af66ff','#20c8ff'];const palettes={violet:['#af66ff','#20c8ff'],blue:['#38cfff','#8b8eff'],red:['#ff4877','#ffab4c'],gold:['#ffc45c','#ff6b55']};
+document.getElementById('palette').onchange=e=>{palette=palettes[e.target.value];document.documentElement.style.setProperty('--accent',palette[0]);document.documentElement.style.setProperty('--accent2',palette[1]);};
+document.getElementById('demo').onclick=()=>{demo=!demo;document.getElementById('demo').textContent=demo?'Stop':'Demo';};
+window.setDesktopAudio=values=>{if(Array.isArray(values)&&values.length){signal=values.slice(0,72).map(v=>Math.max(0,Math.min(1,v/255)));received=performance.now();demo=false;document.getElementById('demo').textContent='Demo';status.textContent='SYSTEM AUDIO CONNECTED';}};
+function size(){D=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=Math.round(W*D);canvas.height=Math.round(H*D);ctx.setTransform(D,0,0,D,0,0);}addEventListener('resize',size);size();
+const particles=Array.from({length:95},(_,i)=>({x:Math.random(),y:Math.random(),r:.3+Math.random()*1.5,v:.08+Math.random()*.4,a:.2+Math.random()*.5}));
+function rgba(hex,a){const n=parseInt(hex.slice(1),16);return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'}
+function frame(ms){requestAnimationFrame(frame);t=ms*.001;const demoData=demo?signal.map((_,i)=>Math.max(0,Math.min(1,.23+.18*Math.sin(t*4+i*.37)+.18*Math.sin(t*2.3+i*.16)+Math.sin(t*6)*.12))):signal;
+if(!demo&&ms-received>1500){status.textContent='LISTENING TO WINDOWS AUDIO';signal=signal.map(v=>v*.9);}
+const gain=+document.getElementById('gain').value;const energies=demoData.map(v=>Math.min(1,v*gain*.58));const target=energies.reduce((a,b)=>a+b,0)/energies.length;const low=energies.slice(0,9).reduce((a,b)=>a+b,0)/9;level=level*.85+target*.15;bass=bass*.8+low*.2;
+ctx.clearRect(0,0,W,H);const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,'#060612');bg.addColorStop(.5,'#110c25');bg.addColorStop(1,'#050911');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+const cx=W/2,cy=H*.44,radius=Math.min(W*.32,H*.19);
+for(const [x,y,r,c] of [[W*.2,H*.24,W*.65,palette[0]],[W*.85,H*.68,W*.7,palette[1]]]){const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,rgba(c,.12+.1*level));g.addColorStop(1,rgba(c,0));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);}
+ctx.save();ctx.translate(cx,cy);ctx.globalCompositeOperation='screen';
+for(let ring=0;ring<4;ring++){ctx.beginPath();ctx.arc(0,0,radius*(.67+ring*.13)+bass*8,0,Math.PI*2);ctx.strokeStyle=rgba(palette[ring%2],.13+ring*.05+level*.16);ctx.lineWidth=1.5;ctx.stroke();}
+for(let i=0;i<72;i++){const a=i/72*Math.PI*2-Math.PI/2;const v=energies[i];const start=radius*.9;const end=start+9+v*radius*.42;ctx.beginPath();ctx.moveTo(Math.cos(a)*start,Math.sin(a)*start);ctx.lineTo(Math.cos(a)*end,Math.sin(a)*end);ctx.lineWidth=2+v*2;ctx.lineCap='round';ctx.strokeStyle=palette[i%2];ctx.shadowColor=palette[i%2];ctx.shadowBlur=8+v*18;ctx.stroke();}
+ctx.shadowBlur=0;ctx.restore();
+for(const p of particles){p.y-=p.v*(.25+level*1.8)/H*4;if(p.y<-.01){p.y=1.01;p.x=Math.random()}ctx.beginPath();ctx.arc(p.x*W+Math.sin(t*.4+p.y*9)*12,p.y*H,p.r*(1+level*.7),0,Math.PI*2);ctx.fillStyle=rgba(palette[0],p.a);ctx.fill();}
+const line=ctx.createLinearGradient(0,0,W,0);line.addColorStop(0,'transparent');line.addColorStop(.5,rgba(palette[0],.36));line.addColorStop(1,'transparent');ctx.fillStyle=line;ctx.fillRect(0,H*.83,W,1);
+}
+requestAnimationFrame(frame);
+addEventListener('keydown',e=>{if(e.key.toLowerCase()==='h')document.body.classList.toggle('clean')});
+</script></body></html>
