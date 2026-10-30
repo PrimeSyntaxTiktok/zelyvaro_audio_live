@@ -8,7 +8,7 @@ from urllib.error import HTTPError
 from PySide6.QtGui import QImage, QColor
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 from visual_settings import validated
-from live_server import LiveServer
+from live_server import LiveServer, preserve_existing_port
 import background
 
 
@@ -69,6 +69,43 @@ class BackgroundTests(unittest.TestCase):
 
 
 class LiveServerTests(unittest.TestCase):
+    def test_migration_adopts_the_existing_personal_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            server=LiveServer(Path(__file__).resolve().parents[1]/'app',directory)
+            try:
+                port_file=Path(directory)/'stream-port.json'
+                port_file.unlink()
+                preserve_existing_port(directory)
+                self.assertEqual(json.loads(port_file.read_text(encoding='utf8'))['port'],server.port)
+            finally:
+                server.close()
+
+    def test_personal_links_are_identical_after_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            assets=Path(__file__).resolve().parents[1]/'app'
+            server=LiveServer(assets,directory)
+            before={mode:server.formatted_url(mode) for mode in ('portrait','landscape')}
+            with urlopen(before['portrait'],timeout=2) as response:
+                response.read()
+            server.close()
+            restarted=LiveServer(assets,directory)
+            try:
+                self.assertEqual(before,{mode:restarted.formatted_url(mode) for mode in before})
+            finally:
+                restarted.close()
+
+    def test_busy_saved_port_never_changes_personal_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            assets=Path(__file__).resolve().parents[1]/'app'
+            server=LiveServer(assets,directory)
+            identity=(Path(directory)/'stream-port.json').read_bytes()
+            try:
+                with self.assertRaisesRegex(OSError,'liens sont conservés'):
+                    LiveServer(assets,directory)
+                self.assertEqual((Path(directory)/'stream-port.json').read_bytes(),identity)
+            finally:
+                server.close()
+
     def test_two_sources_never_share_or_steal_a_windows_port(self):
         with tempfile.TemporaryDirectory() as directory:
             assets=Path(__file__).resolve().parents[1]/'app'
@@ -76,6 +113,7 @@ class LiveServerTests(unittest.TestCase):
             second=LiveServer(assets,Path(directory)/'two')
             try:
                 self.assertNotEqual(first.port,second.port)
+                self.assertNotEqual(first.token,second.token)
                 for server in (first,second):
                     with urlopen(server.formatted_url('landscape'),timeout=2) as response:
                         self.assertIn(b'width:1920px',response.read())

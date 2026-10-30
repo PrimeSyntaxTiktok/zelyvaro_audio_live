@@ -8,7 +8,7 @@ permissions:
   contents: write
 concurrency:
   group: windows-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-2022
@@ -46,7 +46,7 @@ jobs:
           $profile = Join-Path $PWD 'output/format-profile'
           $process = Start-Process -FilePath 'dist/ZELYVARO Audio Live/ZELYVARO Audio Live.exe' -ArgumentList @('--self-test', "`"$formats`"", '--format-test', '--test-profile', "`"$profile`"") -WindowStyle Hidden -PassThru
           if (-not $process.WaitForExit(60000)) { $process.Kill(); throw 'Format test timed out' }
-          if ($process.ExitCode -ne 0) { throw 'Format test executable failed' }
+          if ($process.ExitCode -ne 0) { if (Test-Path $formats) { Get-Content $formats -Raw | Write-Host }; throw 'Format test executable failed' }
           $result = Get-Content $formats -Raw | ConvertFrom-Json
           if (-not $result.passed) { throw 'Output formats or close behavior failed' }
       - name: Build Windows installer and checksum
@@ -63,6 +63,7 @@ jobs:
           $zipHash = (Get-FileHash $portable -Algorithm SHA256).Hash.ToLowerInvariant()
           "$zipHash  $([System.IO.Path]::GetFileName($portable))" | Set-Content ($portable + '.sha256') -Encoding ascii
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ZelyvaroAudioLive-Windows-x64
           path: output/*

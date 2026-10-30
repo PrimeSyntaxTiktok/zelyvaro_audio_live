@@ -45,7 +45,7 @@ def validated(value):
                 item['font'] = raw['font']
             if isinstance(raw.get('color'), str) and re.fullmatch(r'#[0-9a-fA-F]{6}', raw['color']):
                 item['color'] = raw['color']
-            item['weight'] = 700 if raw.get('weight') == 700 else 400
+            item['weight'] = 700 if kind == 'track' or raw.get('weight') == 700 else 400
             item['mode'] = 'manual' if raw.get('mode') == 'manual' else 'auto'
             result['overlays'][kind] = item
     result['customThemes'] = []

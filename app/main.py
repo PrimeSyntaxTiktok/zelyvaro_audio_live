@@ -23,7 +23,7 @@ from source_dialog import SourceDialog
 from stream_format import StreamFormatDialog, FORMATS
 from single_instance import SingleInstance, activate_legacy_instance
 import background
-from live_server import LiveServer
+from live_server import LiveServer, preserve_existing_port
 from visual_settings import validated
 from updates import latest_update, download_update
 from version import VERSION, APP, REPOSITORY
@@ -575,6 +575,7 @@ def main():
         if not instance.acquire():
             return 0
         if activate_legacy_instance():
+            preserve_existing_port(DATA_DIR)
             instance.close()
             return 0
         app.aboutToQuit.connect(instance.close)
@@ -583,7 +584,14 @@ def main():
         source = next((item for item in applications() if item['pid'] == args.source_pid), None)
         if source is None:
             raise RuntimeError('Cette application n’a pas de session audio Windows disponible.')
-    window = MainWindow(probe=bool(args.self_test), source=source)
+    try:
+        window = MainWindow(probe=bool(args.self_test), source=source)
+    except (OSError, ValueError, KeyError) as exc:
+        if instance:
+            instance.close()
+        if not args.self_test:
+            QMessageBox.warning(None, APP, 'La diffusion ne peut pas démarrer.\n\n' + str(exc))
+        return 1
     if instance:
         instance.bind(window.restore_window)
     window.show()

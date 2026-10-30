@@ -1,6 +1,6 @@
 #define AppName "ZELYVARO Audio Live"
 #ifndef AppVersion
-  #define AppVersion "1.2.1"
+  #define AppVersion "1.3.0"
 #endif
 [Setup]
 AppId={{576F3D66-B09B-45B5-B653-A5D6B8DD18DF}

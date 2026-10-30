@@ -3,12 +3,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import hmac
 import json
+import os
 import secrets
 import socket
+import struct
 import threading
 import time
 from stream_format import FORMATS
 from urllib.parse import urlsplit, parse_qs
+from urllib.request import urlopen
 
 
 class LoopbackServer(ThreadingHTTPServer):
@@ -21,6 +24,37 @@ class LoopbackServer(ThreadingHTTPServer):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
 
+    def get_request(self):
+        connection, address = super().get_request()
+        # SSE clients reconnect to the same URL after a restart. An RST on close
+        # releases the fixed Windows port without an extended TIME_WAIT delay.
+        connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
+                              struct.pack('hh' if os.name == 'nt' else 'ii', 1, 0))
+        return connection, address
+
+
+def preserve_existing_port(profile):
+    """Adopt an existing 1.2 live source when migrating its persistent identity."""
+    profile = Path(profile)
+    destination = profile / 'stream-port.json'
+    if destination.exists():
+        return
+    try:
+        token = (profile / 'live-source-key.txt').read_text(encoding='ascii').strip()
+    except OSError:
+        return
+    for port in range(17861, 17881):
+        try:
+            with urlopen(f'http://127.0.0.1:{port}/health?key={token}', timeout=.15) as response:
+                state = json.load(response)
+            if 'audio_packets' in state and 'clients' in state:
+                pending = profile / 'stream-port.tmp.json'
+                pending.write_text(json.dumps({'port': port}), encoding='utf8')
+                pending.replace(destination)
+                return
+        except (OSError, ValueError):
+            continue
+
 
 class LiveServer:
     def __init__(self, assets, profile):
@@ -28,6 +62,7 @@ class LiveServer:
         profile = Path(profile)
         profile.mkdir(parents=True, exist_ok=True)
         token_file = profile / 'live-source-key.txt'
+        previous_identity = token_file.exists()
         try:
             self.token = token_file.read_text(encoding='ascii').strip()
         except OSError:
@@ -40,6 +75,19 @@ class LiveServer:
         self.audio_packets = 0
         self.stopping = False
         owner = self
+        port_file = profile / 'stream-port.json'
+        try:
+            saved_port = json.loads(port_file.read_text(encoding='utf8'))['port']
+            if type(saved_port) is not int or not 17861 <= saved_port <= 17880:
+                raise ValueError('Port de diffusion enregistré invalide.')
+        except FileNotFoundError:
+            # Windows 1.2 used 17861 before port persistence existed. Adopt a
+            # running legacy listener when available; otherwise retain that URL.
+            if previous_identity:
+                preserve_existing_port(profile)
+                saved_port = json.loads(port_file.read_text(encoding='utf8'))['port'] if port_file.exists() else 17861
+            else:
+                saved_port = None
 
         class Handler(BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
@@ -130,7 +178,7 @@ class LiveServer:
                 self.end_headers()
                 self.wfile.write(body)
 
-        for port in range(17861, 17881):
+        for port in ([saved_port] if saved_port else range(17861, 17881)):
             try:
                 self.http = LoopbackServer(('127.0.0.1', port), Handler)
                 self.port = port
@@ -138,7 +186,11 @@ class LiveServer:
             except OSError:
                 continue
         else:
-            raise OSError('Aucun port local disponible pour la sortie de diffusion.')
+            raise OSError(f'Le port personnel de diffusion {saved_port} est occupé. Fermez la précédente instance ou le programme qui utilise ce port, puis relancez ZELYVARO. Vos liens sont conservés.' if saved_port else 'Aucun port local disponible pour la sortie de diffusion.')
+        if not port_file.exists():
+            pending = profile / 'stream-port.tmp.json'
+            pending.write_text(json.dumps({'port': self.port}), encoding='utf8')
+            pending.replace(port_file)
         self.http.daemon_threads = True
         self.thread = threading.Thread(target=lambda: self.http.serve_forever(poll_interval=.1), daemon=True)
         self.thread.start()

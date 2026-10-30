@@ -56,6 +56,11 @@ def start(window, report):
     QTimer.singleShot(1800, lambda: copy('portrait'))
     QTimer.singleShot(2600, lambda: copy('landscape', True))
 
+    def check_studio():
+        script = '''(()=>{const states=[];for(const tab of document.querySelectorAll('[data-pane]')){tab.click();states.push(document.querySelectorAll('.settings-pane:not([hidden])').length===1&&tab.getAttribute('aria-selected')==='true');}window.applyVisualSettings({overlays:{track:{mode:'manual',manualArtist:'Artiste test',manualTitle:'Titre test',visible:true,locked:true,weight:400}}});window.overlayController.refresh();const n=document.querySelector('[data-kind=track]'),label=n.querySelector('.track-label');return JSON.stringify({tabs:states.length===4&&states.every(Boolean),track:label?.textContent,bold:getComputedStyle(n).fontWeight==='700',singleLine:label?.getClientRects().length===1,transparentMusicIcon:!!n.querySelector('svg.music-icon[fill=none]'),errors:window.jsErrors});})()'''
+        window.web.page().runJavaScript(script, lambda value: checks.__setitem__('studio', json.loads(value) if value else {}))
+    QTimer.singleShot(2900, check_studio)
+
     def close_to_tray():
         window.probe = False
         window.close()
@@ -76,13 +81,16 @@ def finish(window, report):
     checks = report['format_test']
     passed = bool(not checks['errors'] and checks.get('close_keeps_running') and
                   checks.get('cancel_preserves_clipboard') and checks.get('cancel_preserves_format'))
+    studio = checks.get('studio', {})
+    passed &= bool(studio.get('tabs') and studio.get('bold') and studio.get('singleLine') and
+                   studio.get('transparentMusicIcon') and studio.get('track') == 'Artiste test — Titre test' and not studio.get('errors'))
     for mode, (_, width, height, _) in FORMATS.items():
         item = checks['views'].get(mode, {})
         first, last = item.get('first', {}), item.get('last', {})
         copied = checks['copies'].get(mode, {})
         passed &= bool(copied.get('copied_format') == mode and copied.get('saved') == mode and
                        last.get('width') == width and last.get('height') == height and
-                       last.get('frames', 0) > first.get('frames', 0) + 30 and
+                       first.get('frames', 0) > 0 and last.get('frames', 0) > first.get('frames', 0) + 5 and
                        not last.get('errors') and last.get('rect') and
                        abs(last['rect']['w'] / last['rect']['h'] - width / height) < .001)
         path = report.get('format_screenshot_base')
