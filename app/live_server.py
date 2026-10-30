@@ -4,9 +4,22 @@ from pathlib import Path
 import hmac
 import json
 import secrets
+import socket
 import threading
 import time
+from stream_format import FORMATS
 from urllib.parse import urlsplit, parse_qs
+
+
+class LoopbackServer(ThreadingHTTPServer):
+    # SO_REUSEADDR permits simultaneous listeners on Windows. Never share a live
+    # source port with another instance (including an older installed version).
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 class LiveServer:
@@ -38,6 +51,30 @@ class LiveServer:
                 host = self.headers.get('Host', '')
                 if host not in (f'127.0.0.1:{owner.port}', f'localhost:{owner.port}') or not hmac.compare_digest(token, owner.token):
                     self.send_error(403)
+                    return
+                output_format = parse_qs(parsed.query).get('format', [''])[0]
+                if parsed.path == '/live' and output_format and output_format not in FORMATS:
+                    self.send_error(400, 'Unknown output format')
+                    return
+                if parsed.path == '/live' and output_format and parse_qs(parsed.query).get('stage') != ['1']:
+                    _, width, height, _ = FORMATS[output_format]
+                    # The inner viewport fixes composition and aspect ratio even if the
+                    # host browser source has a different size. Never stretch the scene.
+                    source = f'/live?key={owner.token}&amp;format={output_format}&amp;stage=1'
+                    body = (f'<!doctype html><html lang="fr"><meta charset="utf-8"><title>ZELYVARO · {width} × {height}</title>'
+                            '<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}'
+                            f'iframe{{position:absolute;border:0;width:{width}px;height:{height}px;transform-origin:top left}}</style>'
+                            f'<iframe id="stage" title="Diffusion {width} × {height}" src="{source}"></iframe>'
+                            '<script>function fit(){const s=document.getElementById("stage");'
+                            f'const z=Math.min(innerWidth/{width},innerHeight/{height});'
+                            f's.style.left=((innerWidth-{width}*z)/2)+"px";s.style.top=((innerHeight-{height}*z)/2)+"px";'
+                            's.style.transform="scale("+z+")";}addEventListener("resize",fit);fit();</script></html>').encode('utf8')
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/html; charset=utf-8')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.send_header('Cache-Control', 'no-store')
+                    self.end_headers()
+                    self.wfile.write(body)
                     return
                 if parsed.path == '/events':
                     self.send_response(200)
@@ -95,7 +132,7 @@ class LiveServer:
 
         for port in range(17861, 17881):
             try:
-                self.http = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+                self.http = LoopbackServer(('127.0.0.1', port), Handler)
                 self.port = port
                 break
             except OSError:
@@ -109,6 +146,11 @@ class LiveServer:
     @property
     def url(self):
         return f'http://127.0.0.1:{self.port}/live?key={self.token}#tiktok.studio'
+
+    def formatted_url(self, output_format):
+        if output_format not in FORMATS:
+            raise ValueError('Unknown output format')
+        return f'http://127.0.0.1:{self.port}/live?key={self.token}&format={output_format}#tiktok.studio'
 
     def publish(self, kind, payload):
         data = json.dumps(payload, ensure_ascii=True, separators=(',', ':'))

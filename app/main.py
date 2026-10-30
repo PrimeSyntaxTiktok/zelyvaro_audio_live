@@ -12,7 +12,7 @@ os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] = (os.environ.get('QTWEBENGINE_CHROMIUM
 
 from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot, Qt
 from PySide6.QtGui import QShortcut, QKeySequence, QIcon
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QFileDialog, QSystemTrayIcon, QMenu, QStyle
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QFileDialog, QSystemTrayIcon, QMenu, QStyle, QDialog
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage
@@ -20,6 +20,8 @@ from PySide6.QtWebEngineCore import QWebEnginePage
 from audio import AudioThread
 from process_audio import applications, resolve_source, media_info
 from source_dialog import SourceDialog
+from stream_format import StreamFormatDialog, FORMATS
+from single_instance import SingleInstance, activate_legacy_instance
 import background
 from live_server import LiveServer
 from visual_settings import validated
@@ -126,6 +128,11 @@ class MainWindow(QMainWindow):
         self.checking = False
         self.downloading = False
         self.probe = probe
+        try:
+            output = json.loads((DATA_DIR / 'stream-output.json').read_text(encoding='utf8'))
+            self.stream_format = output['format'] if output.get('format') in FORMATS else 'portrait'
+        except (OSError, ValueError, KeyError, TypeError):
+            self.stream_format = 'portrait'
         self._quitting = False
         self._metadata_stop = threading.Event()
         self.track_metadata = {'artist': '', 'title': '', 'available': False}
@@ -375,16 +382,29 @@ class MainWindow(QMainWindow):
         self.send_logo()
 
     def copy_stream_link(self):
-        QApplication.clipboard().setText(self.live.url)
+        dialog = StreamFormatDialog(self.stream_format, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self.stream_format = dialog.selected_format
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        pending = DATA_DIR / 'stream-output.tmp.json'
+        pending.write_text(json.dumps({'format': self.stream_format}), encoding='utf8')
+        pending.replace(DATA_DIR / 'stream-output.json')
+        QApplication.clipboard().setText(self.live.formatted_url(self.stream_format))
+        label, width, height, _ = FORMATS[self.stream_format]
+        message = f'Lien {label.lower()} copié · {width} × {height}'
+        self.statusBar().showMessage(message, 8000)
+        self.web.page().runJavaScript('window.setStreamCopied(' + json.dumps(message) + ')')
 
     def open_live_output(self):
         if not hasattr(self, 'live_view'):
             self.live_view = QWebEngineView()
             self.live_view.setWindowTitle('ZELYVARO — Sortie de diffusion')
             self.live_view.setWindowIcon(self.windowIcon())
-            self.live_view.resize(450, 800)
             self.live_view.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
-            self.live_view.load(QUrl(self.live.url))
+        _, width, height, _ = FORMATS[self.stream_format]
+        self.live_view.resize(450, 800) if width < height else self.live_view.resize(960, 540)
+        self.live_view.load(QUrl(self.live.formatted_url(self.stream_format)))
         self.live_view.show()
 
     def restore_window(self):
@@ -502,8 +522,12 @@ class MainWindow(QMainWindow):
         QApplication.quit()
 
     def closeEvent(self, event):
-        if not self.probe and not self._quitting and QSystemTrayIcon.isSystemTrayAvailable():
-            self.hide()
+        if not self.probe and not self._quitting:
+            if QSystemTrayIcon.isSystemTrayAvailable():
+                self.tray.show()
+                self.hide()
+            else:
+                self.showMinimized()
             event.ignore()
             return
         self._metadata_stop.set()
@@ -530,8 +554,9 @@ def main():
     parser.add_argument('--expect-tone-hz', type=float)
     parser.add_argument('--test-profile', type=Path)
     parser.add_argument('--studio-test', action='store_true')
+    parser.add_argument('--format-test', action='store_true')
     args = parser.parse_args()
-    if (args.test_profile or args.studio_test) and not args.self_test:
+    if (args.test_profile or args.studio_test or args.format_test) and not args.self_test:
         parser.error('Les options de diagnostic nécessitent --self-test.')
     if args.test_profile:
         DATA_DIR = args.test_profile.resolve()
@@ -544,12 +569,23 @@ def main():
     app.setOrganizationName('ZELYVARO')
     app.setApplicationName('ZelyvaroAudioLive')
     app.setApplicationVersion(VERSION)
+    instance = None
+    if not args.self_test:
+        instance = SingleInstance(DATA_DIR)
+        if not instance.acquire():
+            return 0
+        if activate_legacy_instance():
+            instance.close()
+            return 0
+        app.aboutToQuit.connect(instance.close)
     source = None
     if args.source_pid:
         source = next((item for item in applications() if item['pid'] == args.source_pid), None)
         if source is None:
             raise RuntimeError('Cette application n’a pas de session audio Windows disponible.')
     window = MainWindow(probe=bool(args.self_test), source=source)
+    if instance:
+        instance.bind(window.restore_window)
     window.show()
     if args.self_test:
         from probe import run_probe

@@ -69,6 +69,41 @@ class BackgroundTests(unittest.TestCase):
 
 
 class LiveServerTests(unittest.TestCase):
+    def test_two_sources_never_share_or_steal_a_windows_port(self):
+        with tempfile.TemporaryDirectory() as directory:
+            assets=Path(__file__).resolve().parents[1]/'app'
+            first=LiveServer(assets,Path(directory)/'one')
+            second=LiveServer(assets,Path(directory)/'two')
+            try:
+                self.assertNotEqual(first.port,second.port)
+                for server in (first,second):
+                    with urlopen(server.formatted_url('landscape'),timeout=2) as response:
+                        self.assertIn(b'width:1920px',response.read())
+            finally:
+                first.close()
+                second.close()
+
+    def test_explicit_formats_keep_fixed_viewport_and_legacy_links_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            server=LiveServer(Path(__file__).resolve().parents[1]/'app',directory)
+            try:
+                for mode,width,height in [('portrait',1080,1920),('landscape',1920,1080)]:
+                    url=server.formatted_url(mode)
+                    with urlopen(url,timeout=2) as response:
+                        html=response.read().decode('utf8')
+                    self.assertIn(f'width:{width}px;height:{height}px',html)
+                    self.assertIn('stage=1',html)
+                    self.assertIn(f'format={mode}',html)
+                    with urlopen(url.split('#')[0]+'&stage=1',timeout=2) as response:
+                        self.assertIn(b'visual',response.read())
+                with self.assertRaises(ValueError):
+                    server.formatted_url('wrong')
+                with self.assertRaises(HTTPError) as error:
+                    urlopen(f'http://127.0.0.1:{server.port}/live?key={server.token}&format=wrong',timeout=2)
+                self.assertEqual(error.exception.code,400)
+            finally:
+                server.close()
+
     def test_local_source_requires_key_and_keeps_publishing_without_a_window(self):
         with tempfile.TemporaryDirectory() as directory:
             server=LiveServer(Path(__file__).resolve().parents[1]/'app',directory)

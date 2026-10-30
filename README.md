@@ -1,4 +1,4 @@
-# ZELYVARO Audio Live 1.2
+# ZELYVARO Audio Live 1.2.1
 
 Visualiseurs musicaux plein écran pour Windows x64 et TikTok Live Studio / OBS.
 La forme des effets vient du son capturé : 128 bandes logarithmiques, forme d’onde réelle, graves, médiums, aigus et détection d’impacts. Aucun faux spectre n’est généré en fonctionnement normal.
@@ -34,9 +34,9 @@ Importer un logo du PC ou un lien HTTP(S) direct vers une image, utiliser le log
 
 ## Diffuser en arrière-plan
 
-Utiliser **Diffusion > Copier le lien de diffusion**, puis ajouter ce lien comme source **Lien / Navigateur** dans TikTok Live Studio ou OBS. Régler la source à 1080 × 1920 pour un live vertical. Si la version de TikTok Studio ne propose pas cette source, l’ouvrir dans une fenêtre de navigateur qui reste affichée et capturer cette fenêtre, ou utiliser OBS.
+Utiliser **Diffusion > Copier le lien de diffusion**, puis ajouter ce lien comme source **Lien / Navigateur** dans TikTok Live Studio ou OBS. Le dialogue propose **Portrait 9:16 (1080 × 1920)** ou **Paysage 16:9 (1920 × 1080)** et mémorise le dernier choix. Le lien conserve le format choisi, sans étirement même si la source hôte a une autre taille. Régler la largeur et la hauteur de la source dans TikTok Studio / OBS aux dimensions indiquées pour remplir le cadre ; une page ne peut pas modifier automatiquement les propriétés de la source de ces logiciels. Deux liens de formats différents peuvent être utilisés simultanément. Si la version de TikTok Studio ne propose pas cette source, l’ouvrir dans une fenêtre de navigateur qui reste affichée et capturer cette fenêtre, ou utiliser OBS.
 
-Le serveur reste local à 127.0.0.1, avec clé privée conservée dans le profil. La source navigateur effectue son propre rendu : elle continue quand les commandes de ZELYVARO sont réduites, cachées ou recouvertes par un jeu. La capture d’une fenêtre Windows réduite dépend du logiciel de streaming ; utiliser la source navigateur pour ce besoin. Le logiciel doit rester en fonctionnement. Fermer par la croix le range dans la zone de notification ; **Quitter** arrête le logiciel et la source. Le lien reste identique après redémarrage si son port habituel est disponible.
+Le serveur reste local à 127.0.0.1, avec clé privée conservée dans le profil. La source navigateur effectue son propre rendu : elle continue quand les commandes de ZELYVARO sont réduites, cachées ou recouvertes par un jeu. La capture d’une fenêtre Windows réduite dépend du logiciel de streaming ; utiliser la source navigateur pour ce besoin. Le logiciel doit rester en fonctionnement. Une seule instance normale est autorisée par utilisateur, y compris depuis deux dossiers différents. Un second lancement restaure la fenêtre existante, même si elle est rangée en zone de notification. Fermer par la croix le range dans la zone de notification (ou le réduit si cette zone est indisponible) ; **Quitter** arrête le logiciel et la source. Le lien reste identique après redémarrage si son port habituel est disponible.
 
 Le live ne montre ni nom du thème ni contrôles. Dans la fenêtre ZELYVARO active, **Échap** quitte le mode live et ouvre la configuration, **H** bascule les contrôles, **F** bascule le plein écran. Échap n’est pas un raccourci global interceptant les touches de vos jeux. Double-cliquer sur l’icône de notification restaure la fenêtre.
 

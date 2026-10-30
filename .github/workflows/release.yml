@@ -42,6 +42,13 @@ jobs:
           if ($process.ExitCode -ne 0) { throw 'Executable failed' }
           $result = Get-Content $report -Raw | ConvertFrom-Json
           if (-not $result.passed) { throw 'Renderer/bridge smoke test failed' }
+          $formats = Join-Path $PWD 'output/formats.json'
+          $profile = Join-Path $PWD 'output/format-profile'
+          $process = Start-Process -FilePath 'dist/ZELYVARO Audio Live/ZELYVARO Audio Live.exe' -ArgumentList @('--self-test', "`"$formats`"", '--format-test', '--test-profile', "`"$profile`"") -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(60000)) { $process.Kill(); throw 'Format test timed out' }
+          if ($process.ExitCode -ne 0) { throw 'Format test executable failed' }
+          $result = Get-Content $formats -Raw | ConvertFrom-Json
+          if (-not $result.passed) { throw 'Output formats or close behavior failed' }
       - name: Build Windows installer and checksum
         shell: pwsh
         run: |

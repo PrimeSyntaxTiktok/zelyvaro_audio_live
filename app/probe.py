@@ -15,6 +15,9 @@ def run_probe(app, window, args):
     report = {'version': VERSION, 'web_loaded': False, 'javascript_bridge': False}
     args.self_test.parent.mkdir(parents=True, exist_ok=True)
     report['themes'] = {}
+    if args.format_test:
+        from format_probe import start
+        start(window, report)
     if args.studio_test:
         from PySide6.QtCore import QUrl
         from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -101,6 +104,11 @@ def run_probe(app, window, args):
                 report['passed'] &= bool(audio.peak_rms > .0001 and abs(audio.peak_hz - args.expect_tone_hz) < 30)
             if args.gallery:
                 report['passed'] &= len(set(report['themes'].values())) == 6
+            if args.format_test:
+                from format_probe import finish as finish_formats
+                report['format_screenshot_base'] = args.self_test
+                report['passed'] &= finish_formats(window, report)
+                del report['format_screenshot_base']
             if args.studio_test:
                 samples = report['independent_source']
                 report['background_continuity'] = bool(len(samples) >= 10 and
@@ -120,5 +128,5 @@ def run_probe(app, window, args):
             window.close()
             app.exit(0 if report['passed'] else 1)
         window.web.page().runJavaScript(script, result)
-    QTimer.singleShot(15500 if args.studio_test else 13000 if args.gallery else 7000, finish)
+    QTimer.singleShot(15500 if args.studio_test else 13000 if args.gallery else 11000 if args.format_test else 7000, finish)
     QTimer.singleShot(25000 if args.studio_test else 20000, lambda: app.exit(2))
