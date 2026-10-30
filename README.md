@@ -1,60 +1,54 @@
-# ZELYVARO Audio Live
+# ZELYVARO Audio Live 1.2
 
-Application Windows 10 (1809+) / 11 x64, fond animé vertical pour TikTok Live Studio.
-Projet initial repris depuis ZelyvaroAudioLive_Source.zip, avec six scènes animées originales.
+Visualiseurs musicaux plein écran pour Windows x64 et TikTok Live Studio / OBS.
+La forme des effets vient du son capturé : 128 bandes logarithmiques, forme d’onde réelle, graves, médiums, aigus et détection d’impacts. Aucun faux spectre n’est généré en fonctionnement normal.
 
-## Six décors animés
+## Six thèmes et compositions personnelles
 
-- **Stellar Drift** : nébuleuse, planète, poussières orbitales et étoiles filantes.
-- **Neon District** : ville cyberpunk, pluie en profondeur et reflets sur chaussée mouillée.
-- **Ember Rise** : rivière de lave, fumée et braises ascendantes.
-- **Northern Lights** : aurore boréale en mouvement, sommets et neige.
-- **Abyssal Bloom** : méduses aux tentacules animés, faisceaux sous-marins et plancton lumineux.
-- **Liquid Gold** : rubans de métal fluide, gouttes dorées et éclats.
+- **ECLIPSE** : couronnes de fréquences, impulsions et étoiles.
+- **PRISM** : spectre miroir et étincelles électriques.
+- **SHOCKWAVE** : rayons et impacts radiaux, braises.
+- **FLUX** : nappes de formes d’onde et cristaux.
+- **VORTEX** : tunnel de fréquences, bulles et orbes.
+- **CHROMA** : cascade d’historique spectral, confettis et traînées.
 
-Le son module les lumières, mouvements et particules. Les scènes continuent leur animation ambiante
-dans le silence ; aucun faux spectre n'est généré. Le bouton Thèmes ouvre le sélecteur et les réglages.
+Dans **Studio**, combiner plusieurs des six effets et des huit types de particules, choisir les couleurs puis enregistrer sa composition. Jusqu’à 64 compositions ; enregistrer sous le même nom remplace la composition. Régler sensibilité, mouvement, densité et 30/60 images par seconde selon le GPU. Le rendu adapte sa résolution à environ deux millions de pixels. Sans son, les particules tombent, s’effacent et disparaissent. Le bouton de test sans musique active une simulation explicitement identifiée.
 
-## Installation et utilisation
+Importer une image de fond PNG, JPEG, WebP ou BMP. L’image est copiée dans le profil du logiciel et reste disponible si le fichier d’origine est déplacé. Régler son assombrissement dans Studio.
 
-Télécharger `ZelyvaroAudioLive-<version>-setup.exe` depuis les [Releases](https://github.com/PrimeSyntaxTiktok/zelyvaro_audio_live/releases).
-Installation dans le profil utilisateur, désinstallation via Windows. Aucun Python nécessaire sur le PC cible.
-Le binaire est non signé : Windows peut afficher un avertissement de réputation.
+## Installation et source audio
 
-Cliquer sur la **source audio en haut de l’écran**, ou **Audio > Choisir l’application audio…**.
-Choisir **Tout le son Windows**, ou une application avec une session de lecture (Spotify, Deezer, navigateur, jeu…).
-Si elle n’apparaît pas, lancer un son dans cette application puis cliquer sur **Actualiser les applications**.
-Le choix d’application utilise l’API Windows de capture par processus et inclut ses processus enfants,
-pour prendre en charge les navigateurs et les applications Electron. Les autres applications sont exclues.
-Pour un navigateur, le son des onglets de ce même navigateur est inclus.
-Ce mode nécessite **Windows 11**, ou Windows build 20348 minimum. Sur les versions plus anciennes,
-le mode **Tout le son Windows** reste disponible via WASAPI loopback (PyAudioWPatch).
-La source choisie est mémorisée. Si l’application est fermée, la capture attend son retour et tente
-de se reconnecter au même exécutable, sans basculer sur le son global. Aucun réglage du mélangeur Windows n’est changé.
-Le microphone n'est jamais ouvert. Le son n'est ni enregistré sur disque ni envoyé sur Internet.
-Après un changement de casque/sortie, utiliser **Relancer capture audio**.
-Une capture impossible est signalée ; le silence ne déclenche pas de faux spectre musical.
-Les flux protégés ou les applications utilisant une autre sortie/exclusive peuvent ne pas être capturés.
+Prendre `ZelyvaroAudioLive-<version>-setup.exe` dans les [Releases](https://github.com/PrimeSyntaxTiktok/zelyvaro_audio_live/releases). Installation par utilisateur, sans Python sur le PC cible. Le binaire n’est pas signé.
 
-Ajouter la fenêtre du logiciel comme source de capture dans TikTok Live Studio.
-**H** masque les contrôles et les menus, **F** bascule en plein écran.
-Les préférences visuelles sont conservées dans le profil Qt de l'utilisateur.
+Cliquer sur la source en haut de l’écran ou **Audio > Choisir l’application audio…**. Choisir tout le son Windows, ou une application ayant une session de lecture. Si elle manque, lui faire jouer un son puis actualiser la liste.
 
-## Mises à jour
+La capture par application nécessite Windows 11 / build 20348 minimum. Elle comprend les processus enfants de l’application, donc les onglets d’un même navigateur. Les autres applications sont exclues. Sur Windows 10 1809+, le son global reste disponible via WASAPI loopback. Le choix est mémorisé et la capture attend/retrouve l’application après son redémarrage, sans basculer automatiquement sur le son global. Aucun microphone n’est ouvert et aucun réglage du mélangeur Windows n’est changé. Après un changement de sortie audio, relancer la capture depuis le menu Audio. Les flux protégés ou les sorties exclusives peuvent être indisponibles.
 
-Le dépôt est fixé à `PrimeSyntaxTiktok/zelyvaro_audio_live`. Aucun token GitHub n'est embarqué.
-Recherche au démarrage et toutes les quatre heures, ainsi que via le menu.
-Seules les versions stables plus récentes sont proposées. Le téléchargement et l'installation demandent l'accord de l'utilisateur.
-Le nom exact, le dépôt HTTPS, la taille et le SHA-256 publié par GitHub sont vérifiés avant de lancer l'installateur.
-En cas d'erreur ou de corruption, aucun installateur n'est lancé.
-Les téléchargements sont préparés dans un dossier unique sous `%LOCALAPPDATA%/ZelyvaroAudioLive/updates`.
-L'installateur garde le même AppId, réutilise le dossier existant, ferme l'application et la relance après mise à jour.
-Les préférences du profil utilisateur sont conservées.
+## Pseudo, morceau et logo
 
-## Compilation et futures versions
+Dans **Studio > Pseudo, morceau et logo**, choisir le bloc puis **Déplacer / redimensionner**. Glisser le bloc et tirer son angle inférieur droit. Les champs de position et de dimensions permettent un placement précis. Cocher **Verrouiller le placement** pour bloquer les déplacements et la taille. Chaque disposition est enregistrée et répercutée dans la diffusion. Les textes disposent de polices, gras, italique et couleur indépendants.
 
-Python 3.12 x64, outils de compilation MSVC C++ avec SDK Windows 20348+ et Inno Setup 6.
-Dépendances épinglées dans `requirements.txt`. Le build compile aussi le pont natif de capture par application.
+Windows fournit automatiquement artiste et titre pour les lecteurs qui publient leurs métadonnées de session multimédia (GSMTC). En mode application, seules les sessions correspondantes sont retenues. Certains lecteurs ne publient rien : utiliser la saisie manuelle ou les champs de remplacement. Il ne s’agit pas d’une reconnaissance musicale universelle.
+
+Importer un logo du PC ou un lien HTTP(S) direct vers une image, utiliser le logo ZELYVARO ou retirer le logo. Les PNG conservent leur transparence. Le logo original fourni est inclus sans modification dans l’application ; son icône ICO multi-tailles sert à l’EXE, à l’installateur, aux raccourcis, à la barre des tâches et à la zone de notification.
+
+## Diffuser en arrière-plan
+
+Utiliser **Diffusion > Copier le lien de diffusion**, puis ajouter ce lien comme source **Lien / Navigateur** dans TikTok Live Studio ou OBS. Régler la source à 1080 × 1920 pour un live vertical. Si la version de TikTok Studio ne propose pas cette source, l’ouvrir dans une fenêtre de navigateur qui reste affichée et capturer cette fenêtre, ou utiliser OBS.
+
+Le serveur reste local à 127.0.0.1, avec clé privée conservée dans le profil. La source navigateur effectue son propre rendu : elle continue quand les commandes de ZELYVARO sont réduites, cachées ou recouvertes par un jeu. La capture d’une fenêtre Windows réduite dépend du logiciel de streaming ; utiliser la source navigateur pour ce besoin. Le logiciel doit rester en fonctionnement. Fermer par la croix le range dans la zone de notification ; **Quitter** arrête le logiciel et la source. Le lien reste identique après redémarrage si son port habituel est disponible.
+
+Le live ne montre ni nom du thème ni contrôles. Dans la fenêtre ZELYVARO active, **Échap** quitte le mode live et ouvre la configuration, **H** bascule les contrôles, **F** bascule le plein écran. Échap n’est pas un raccourci global interceptant les touches de vos jeux. Double-cliquer sur l’icône de notification restaure la fenêtre.
+
+## Mises à jour GitHub
+
+Le dépôt est fixé à `PrimeSyntaxTiktok/zelyvaro_audio_live`, sans token embarqué. Recherche automatique au démarrage puis toutes les quatre heures, et à la demande dans le menu. Seules les versions stables plus récentes sont proposées. Le téléchargement et l’installation demandent l’accord de l’utilisateur. Le dépôt HTTPS, le nom exact, la taille et le SHA-256 publié sont vérifiés avant de lancer l’installateur. Un échec annule l’installation. L’AppId et le dossier d’installation restent stables ; le profil visuel et les images sont conservés lors d’une mise à jour.
+
+Les préférences, images et clé de diffusion sont dans `%LOCALAPPDATA%/ZelyvaroAudioLive`. Le son analysé n’est pas enregistré ni envoyé sur Internet. Seuls la recherche de mises à jour et un import explicite de logo par lien accèdent au réseau.
+
+## Compiler et vérifier
+
+Python 3.12 x64, MSVC C++20 avec SDK Windows 20348+ et Inno Setup 6. Dépendances épinglées dans `requirements.txt`.
 
 ```powershell
 python -m venv .venv
@@ -63,25 +57,10 @@ python -m venv .venv
 & 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe' installer.iss
 ```
 
-Le workflow Windows installe les dépendances, lance les tests, compile avec PyInstaller,
-teste le rendu WebEngine et le pont JavaScript dans l'EXE, puis construit l'installateur Inno Setup.
-Il conserve les artefacts et publie une Release uniquement si cette version n'existe pas déjà.
-Pour publier une nouvelle version, augmenter `VERSION` dans `app/version.py` puis pousser sur `main`.
-Le build transmet cette version à Inno Setup et aux métadonnées Windows.
-Un tag `vX.Y.Z` doit correspondre à la version du code.
+Le workflow Windows teste le code, compile le pont natif, fige l’application, vérifie le rendu dans l’EXE puis construit l’installateur et le ZIP portable avec SHA-256. Il publie une Release stable pour une nouvelle version poussée sur main. Augmenter `VERSION` dans `app/version.py` ; un tag `vX.Y.Z` doit correspondre à cette version. Une version déjà publiée n’est pas remplacée.
 
-## Vérification réelle du son (PC avec sortie audio)
+Le diagnostic `--self-test rapport.json --gallery` contrôle les six rendus et leur différence entre silence et signal au même instant. Le runner n’a pas besoin de sortie audio. Sur un PC disposant d’une sortie, `--require-audio --play-test-tone` vérifie une tonalité de 1 kHz ; arrêter les autres sons pour ce test. `--studio-test` ajoute une source navigateur indépendante et vérifie qu’elle continue après réduction puis masquage des commandes. `--test-profile chemin` isole les préférences d’un diagnostic et nécessite `--self-test`.
 
-```powershell
-& 'dist/ZELYVARO Audio Live/ZELYVARO Audio Live.exe' --self-test resultat.json --require-audio --play-test-tone
-```
+Le test matériel `tests/integration_application_capture.py` vérifie l’isolation de deux applications, les processus enfants, la pause et la reprise ; compiler le lecteur par `./tools/build-native.ps1 -BuildTestPlayer`.
 
-Ce mode joue volontairement une courte tonalité de 1 kHz, mesure les échantillons capturés,
-vérifie leur arrivée dans le rendu, prend une capture PNG et produit un rapport JSON.
-Le workflow utilise un test de rendu sans imposer de matériel audio au runner GitHub.
-Le test matériel optionnel `tests/integration_application_capture.py` joue deux tonalités depuis deux
-programmes distincts, capture uniquement le premier (y compris son processus enfant), puis vérifie
-l’exclusion du second, la pause et la reprise. Compiler le lecteur de test avec
-`./tools/build-native.ps1 -BuildTestPlayer`, puis exécuter le script en lui passant un chemin de rapport JSON.
-Le pont natif suit les API documentées par [Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params).
-Les dépendances Qt/PySide6, NumPy, PyAudioWPatch et packaging conservent leurs licences respectives, jointes à l'application.
+Le pont natif suit les API de capture par processus et de sessions multimédia de Microsoft. Les licences Qt/PySide6, NumPy, PyAudioWPatch et packaging sont jointes à l’application.

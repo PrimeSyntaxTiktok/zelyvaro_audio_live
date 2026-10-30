@@ -1,6 +1,6 @@
 #define AppName "ZELYVARO Audio Live"
 #ifndef AppVersion
-  #define AppVersion "1.1.0"
+  #define AppVersion "1.2.0"
 #endif
 [Setup]
 AppId={{576F3D66-B09B-45B5-B653-A5D6B8DD18DF}
@@ -21,6 +21,7 @@ CloseApplications=yes
 RestartApplications=yes
 PrivilegesRequired=lowest
 WizardStyle=modern
+SetupIconFile=app\app.ico
 UninstallDisplayIcon={app}\ZELYVARO Audio Live.exe
 SetupLogging=yes
 [Languages]
@@ -30,8 +31,8 @@ Name: "desktopicon"; Description: "Créer un raccourci sur le Bureau"; GroupDesc
 [Files]
 Source: "dist\ZELYVARO Audio Live\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 [Icons]
-Name: "{group}\ZELYVARO Audio Live"; Filename: "{app}\ZELYVARO Audio Live.exe"
-Name: "{autodesktop}\ZELYVARO Audio Live"; Filename: "{app}\ZELYVARO Audio Live.exe"; Tasks: desktopicon
+Name: "{group}\ZELYVARO Audio Live"; Filename: "{app}\ZELYVARO Audio Live.exe"; AppUserModelID: "ZELYVARO.AudioLive"
+Name: "{autodesktop}\ZELYVARO Audio Live"; Filename: "{app}\ZELYVARO Audio Live.exe"; Tasks: desktopicon; AppUserModelID: "ZELYVARO.AudioLive"
 [Run]
 Filename: "{app}\ZELYVARO Audio Live.exe"; Description: "Lancer ZELYVARO Audio Live"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\ZELYVARO Audio Live.exe"; Flags: nowait; Check: IsUpdate

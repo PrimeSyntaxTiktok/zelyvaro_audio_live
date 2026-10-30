@@ -33,7 +33,11 @@ for package in ('PySide6', 'PySide6-Addons', 'PySide6-Essentials', 'shiboken6', 
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
 PyInstaller.__main__.run(['--noconfirm', '--clean', '--onedir', '--windowed', '--name', APP,
+    '--icon', 'app/app.ico',
     '--version-file', str(version_file), '--add-data', 'app/wallpaper.html;.',
     '--add-data', 'app/themes.js;.',
+    '--add-data', 'app/app.js;.',
+    '--add-data', 'app/overlays.js;.',
+    '--add-data', 'app/app.ico;.', '--add-data', 'app/logo.png;.',
     '--add-binary', 'build/native/zelyvaro_capture.dll;.',
     '--add-data', str(licenses) + ';licenses', '--collect-all', 'pyaudiowpatch', 'app/main.py'])

@@ -13,6 +13,10 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.Media.Control.h>
 
 using Microsoft::WRL::ComPtr;
 using Microsoft::WRL::Make;
@@ -249,4 +253,58 @@ extern "C" __declspec(dllexport) HRESULT __cdecl zal_capture_read(void* handle, 
 }
 extern "C" __declspec(dllexport) void __cdecl zal_capture_destroy(void* handle) {
     delete static_cast<Capture*>(handle);
+}
+
+static std::wstring Lower(std::wstring value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+    const auto ending = value.find(L".exe");
+    if (ending != std::wstring::npos) value.erase(ending, 4);
+    return value;
+}
+
+extern "C" __declspec(dllexport) HRESULT __cdecl zal_media_info(
+    const wchar_t* application, wchar_t* artist, UINT artistSize, wchar_t* title, UINT titleSize) {
+    if (!artist || !title || !artistSize || !titleSize) return E_POINTER;
+    artist[0] = title[0] = 0;
+    const HRESULT init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(init)) return init;
+    HRESULT result = S_FALSE;
+    try {
+        using namespace winrt::Windows::Media::Control;
+        using winrt::Windows::Foundation::AsyncStatus;
+        const auto request = GlobalSystemMediaTransportControlsSessionManager::RequestAsync();
+        if (request.wait_for(std::chrono::milliseconds(1800)) == AsyncStatus::Completed) {
+            const auto manager = request.get();
+            GlobalSystemMediaTransportControlsSession chosen{ nullptr };
+            const auto wanted = Lower(application ? application : L"");
+            if (!wanted.empty()) {
+                for (const auto& session : manager.GetSessions()) {
+                    const auto id = Lower(std::wstring(session.SourceAppUserModelId()));
+                    if (id.find(wanted) != std::wstring::npos) {
+                        chosen = session;
+                        if (session.GetPlaybackInfo().PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing) break;
+                    }
+                }
+            } else {
+                const auto current = manager.GetCurrentSession();
+                if (current && current.GetPlaybackInfo().PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing) chosen = current;
+                if (!chosen) for (const auto& session : manager.GetSessions()) {
+                    if (session.GetPlaybackInfo().PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing) { chosen = session; break; }
+                }
+            }
+            if (chosen) {
+                const auto properties = chosen.TryGetMediaPropertiesAsync();
+                if (properties.wait_for(std::chrono::milliseconds(1800)) == AsyncStatus::Completed) {
+                    const auto media = properties.get();
+                    const auto performer = media.Artist().empty() ? media.AlbumArtist() : media.Artist();
+                    wcsncpy_s(artist, artistSize, performer.c_str(), _TRUNCATE);
+                    wcsncpy_s(title, titleSize, media.Title().c_str(), _TRUNCATE);
+                    result = title[0] ? S_OK : S_FALSE;
+                }
+            }
+        }
+    } catch (const winrt::hresult_error& error) { result = error.code(); }
+      catch (...) { result = E_FAIL; }
+    CoUninitialize();
+    return result;
 }

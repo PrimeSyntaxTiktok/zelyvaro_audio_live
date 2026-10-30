@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'app'))
-from audio import spectrum, N
+from analysis_audio import AudioAnalyzer, N
 from updates import parse_release, download_update, Update, trusted_url
 from version import REPOSITORY
 from process_audio import resolve_source
@@ -31,13 +31,36 @@ class SourceTests(unittest.TestCase):
 
 class AudioTests(unittest.TestCase):
     def test_silence_is_silence(self):
-        self.assertEqual(max(spectrum(np.zeros((N, 2)))), 0)
+        packet = AudioAnalyzer().process(np.zeros((N, 2)))
+        self.assertEqual(max(packet['bands']), 0)
+        self.assertEqual(packet['level'], 0)
+        self.assertFalse(packet['signal'])
 
     def test_stereo_opposite_phase_does_not_cancel(self):
         tone = .1 * np.sin(2 * np.pi * 40 * np.arange(N) / N)
-        bins = spectrum(np.stack((tone, -tone), axis=1))
-        self.assertEqual(int(np.argmax(bins)), 40)
-        self.assertGreater(bins[40], 170)
+        packet = AudioAnalyzer().process(np.stack((tone, -tone), axis=1))
+        self.assertAlmostEqual(packet['peakHz'], 40 * 48000 / N, delta=15)
+        self.assertGreater(max(packet['bands']), .8)
+        self.assertGreater(max(map(abs, packet['waveform'])), .3)
+
+    def test_bass_and_treble_follow_actual_frequency(self):
+        results = []
+        for hz in (80, 8000):
+            tone = .06 * np.sin(2 * np.pi * hz * np.arange(N) / 48000)
+            analyzer = AudioAnalyzer()
+            for i in range(8):
+                packet = analyzer.process(tone, i * .04)
+            results.append(packet)
+        self.assertGreater(results[0]['bass'], results[0]['treble'] + .3)
+        self.assertGreater(results[1]['treble'], results[1]['bass'] + .3)
+        self.assertGreater(int(np.argmax(results[1]['bands'])), int(np.argmax(results[0]['bands'])) + 70)
+
+    def test_pause_clears_real_signal_and_bands(self):
+        analyzer = AudioAnalyzer()
+        analyzer.process(.08 * np.sin(2 * np.pi * 80 * np.arange(N) / 48000))
+        packet = analyzer.process(np.zeros((N, 2)))
+        self.assertFalse(packet['signal'])
+        self.assertEqual(max(packet['bands']), 0)
 
 
 class UpdateTests(unittest.TestCase):

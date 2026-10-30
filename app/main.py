@@ -7,14 +7,22 @@ import subprocess
 import sys
 import threading
 
-from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
+os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] = (os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS', '') +
+    ' --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows').strip()
+
+from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot, Qt
+from PySide6.QtGui import QShortcut, QKeySequence, QIcon
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QFileDialog, QSystemTrayIcon, QMenu, QStyle
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebChannel import QWebChannel
+from PySide6.QtWebEngineCore import QWebEnginePage
 
 from audio import AudioThread
-from process_audio import applications, resolve_source
+from process_audio import applications, resolve_source, media_info
 from source_dialog import SourceDialog
+import background
+from live_server import LiveServer
+from visual_settings import validated
 from updates import latest_update, download_update
 from version import VERSION, APP, REPOSITORY
 
@@ -25,6 +33,16 @@ DATA_DIR = Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'ZelyvaroAudioLiv
 class Bridge(QObject):
     restartRequested = Signal()
     sourceRequested = Signal()
+    backgroundRequested = Signal()
+    backgroundCleared = Signal()
+    visualSettingsChanged = Signal(str)
+    visualReadyRequested = Signal()
+    streamLinkRequested = Signal()
+    logoRequested = Signal()
+    logoUrlRequested = Signal(str)
+    logoCleared = Signal()
+    liveExitRequested = Signal()
+    defaultLogoRequested = Signal()
     fullscreenRequested = Signal()
     cleanChanged = Signal(bool)
 
@@ -37,6 +55,46 @@ class Bridge(QObject):
         self.sourceRequested.emit()
 
     @Slot()
+    def chooseBackground(self):
+        self.backgroundRequested.emit()
+
+    @Slot()
+    def clearBackground(self):
+        self.backgroundCleared.emit()
+
+    @Slot(str)
+    def updateVisualSettings(self, value):
+        self.visualSettingsChanged.emit(value)
+
+    @Slot()
+    def visualReady(self):
+        self.visualReadyRequested.emit()
+
+    @Slot()
+    def copyStreamLink(self):
+        self.streamLinkRequested.emit()
+
+    @Slot()
+    def chooseLogo(self):
+        self.logoRequested.emit()
+
+    @Slot(str)
+    def importLogoUrl(self, value):
+        self.logoUrlRequested.emit(value)
+
+    @Slot()
+    def clearLogo(self):
+        self.logoCleared.emit()
+
+    @Slot()
+    def exitLive(self):
+        self.liveExitRequested.emit()
+
+    @Slot()
+    def useDefaultLogo(self):
+        self.defaultLogoRequested.emit()
+
+    @Slot()
     def toggleFullscreen(self):
         self.fullscreenRequested.emit()
 
@@ -46,6 +104,9 @@ class Bridge(QObject):
 
 
 class MainWindow(QMainWindow):
+    metadataFound = Signal(object)
+    logoImported = Signal(object)
+    logoFailed = Signal(str)
     updateFound = Signal(object)
     updateMessage = Signal(str)
     downloadComplete = Signal(str)
@@ -56,6 +117,7 @@ class MainWindow(QMainWindow):
     def __init__(self, probe=False, source=None):
         super().__init__()
         self.setWindowTitle(f'{APP} {VERSION}')
+        self.setWindowIcon(QIcon(str(BASE / 'app.ico')))
         self.resize(450, 800)
         self.setMinimumSize(270, 480)
         self.audio = None
@@ -64,6 +126,18 @@ class MainWindow(QMainWindow):
         self.checking = False
         self.downloading = False
         self.probe = probe
+        self._quitting = False
+        self._metadata_stop = threading.Event()
+        self.track_metadata = {'artist': '', 'title': '', 'available': False}
+        try:
+            self.visual_settings = validated(json.loads((DATA_DIR / 'visual-settings.json').read_text(encoding='utf8')))
+        except (OSError, ValueError):
+            self.visual_settings = {}
+        self.live = LiveServer(BASE, DATA_DIR)
+        self.live.publish('settings', self.visual_settings)
+        self.live.publish('background', background.state(DATA_DIR))
+        self.live.publish('logo', background.state(DATA_DIR / 'logo'))
+        self.live.publish('track', self.track_metadata)
         self.selected_source = source or {'mode': 'system', 'name': 'Tout le son Windows'}
         if source is None and not probe:
             try:
@@ -74,6 +148,7 @@ class MainWindow(QMainWindow):
                 pass
         self.last_status = 'Capture Windows en cours de démarrage…'
         self.web = QWebEngineView()
+        self.web.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
         self.setCentralWidget(self.web)
         self.bridge = Bridge()
         self.channel = QWebChannel(self.web.page())
@@ -81,16 +156,41 @@ class MainWindow(QMainWindow):
         self.web.page().setWebChannel(self.channel)
         self.bridge.restartRequested.connect(self.start_audio)
         self.bridge.sourceRequested.connect(self.choose_audio)
+        self.bridge.backgroundRequested.connect(self.choose_background)
+        self.bridge.backgroundCleared.connect(self.clear_background)
+        self.bridge.visualSettingsChanged.connect(self.update_visual_settings)
+        self.bridge.visualReadyRequested.connect(self.send_visual_state)
+        self.bridge.streamLinkRequested.connect(self.copy_stream_link)
+        self.bridge.logoRequested.connect(self.choose_logo)
+        self.bridge.logoUrlRequested.connect(self.import_logo_url)
+        self.bridge.logoCleared.connect(self.clear_logo)
+        self.bridge.liveExitRequested.connect(self.exit_live)
+        self.bridge.defaultLogoRequested.connect(self.use_default_logo)
+        self.metadataFound.connect(self.update_metadata)
+        self.logoImported.connect(lambda value: self.send_logo())
+        self.logoFailed.connect(lambda text: QMessageBox.warning(self, 'Logo', text))
+        self.escape_shortcut = QShortcut(QKeySequence('Escape'), self)
+        self.escape_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.escape_shortcut.activated.connect(self.exit_live)
         self.bridge.fullscreenRequested.connect(self.toggle_fullscreen)
         self.bridge.cleanChanged.connect(lambda clean: self.menuBar().setVisible(not clean))
         self.web.loadFinished.connect(self.on_loaded)
         self.web.load(QUrl.fromLocalFile(str(BASE / 'wallpaper.html')))
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.flush_audio)
-        self.timer.start(40)
+        self.timer.start(25)
         audio_menu = self.menuBar().addMenu('Audio')
         audio_menu.addAction('Choisir l’application audio…', self.choose_audio)
         audio_menu.addAction('Relancer la capture', self.start_audio)
+        appearance_menu = self.menuBar().addMenu('Apparence')
+        appearance_menu.addAction('Choisir une image de fond…', self.choose_background)
+        appearance_menu.addAction('Retirer l’image de fond', self.clear_background)
+        stream_menu = self.menuBar().addMenu('Diffusion')
+        stream_menu.addAction('Copier le lien TikTok / OBS', self.copy_stream_link)
+        stream_menu.addAction('Ouvrir la sortie de diffusion', self.open_live_output)
+        stream_menu.addAction('Réduire en zone de notification', self.hide)
+        stream_menu.addSeparator()
+        stream_menu.addAction('Quitter le logiciel', self.quit_application)
         self.update_action = self.menuBar().addAction('Vérifier les mises à jour', lambda: self.check_updates(False))
         self.menuBar().addAction('Mode Live (H)', lambda: self.web.page().runJavaScript('window.toggleClean()'))
         self.updateFound.connect(self.install_update)
@@ -99,7 +199,21 @@ class MainWindow(QMainWindow):
         self.downloadFailed.connect(self.download_error)
         self.progressChanged.connect(lambda value: self.statusBar().showMessage(f'Téléchargement de la mise à jour : {value} %'))
         self.checkFinished.connect(self.check_finished)
+        self.tray = QSystemTrayIcon(self.windowIcon(), self)
+        self.tray.setToolTip('ZELYVARO Audio Live — capture et diffusion actives')
+        tray_menu = QMenu(self)
+        self.tray_menu = tray_menu
+        tray_menu.addAction('Afficher les réglages', self.restore_window)
+        tray_menu.addAction('Copier le lien de diffusion', self.copy_stream_link)
+        tray_menu.addSeparator()
+        tray_menu.addAction('Quitter', self.quit_application)
+        self.tray.setContextMenu(tray_menu)
+        self.tray.activated.connect(lambda reason: self.restore_window() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
+        if not probe:
+            self.tray.show()
         self.start_audio()
+        self.metadata_thread = threading.Thread(target=self.poll_metadata, daemon=True)
+        self.metadata_thread.start()
         if not probe:
             self.source_timer = QTimer(self)
             self.source_timer.timeout.connect(self.reconnect_source)
@@ -116,6 +230,9 @@ class MainWindow(QMainWindow):
         self.ready = ok
         if ok:
             self.web.page().runJavaScript('window.setDesktopStatus(' + json.dumps(self.last_status) + ')')
+            self.send_background()
+            self.send_logo()
+            self.send_visual_state()
         elif not self.probe:
             QMessageBox.critical(self, APP, 'Impossible de charger le fond animé livré avec le logiciel.')
 
@@ -168,9 +285,137 @@ class MainWindow(QMainWindow):
 
     def receive_audio(self, values):
         self.pending = values
+        self.live.publish('audio', values)
+
+    def update_visual_settings(self, text):
+        if len(text) > 65536:
+            return
+        try:
+            settings = validated(json.loads(text))
+        except (ValueError, TypeError):
+            return
+        self.visual_settings = settings
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        temporary = DATA_DIR / 'visual-settings.tmp.json'
+        temporary.write_text(json.dumps(settings, ensure_ascii=False), encoding='utf8')
+        temporary.replace(DATA_DIR / 'visual-settings.json')
+        self.live.publish('settings', settings)
+
+    def send_visual_state(self):
+        if self.ready:
+            self.web.page().runJavaScript('window.setStreamUrl(' + json.dumps(self.live.url) + ')')
+            if self.visual_settings:
+                self.web.page().runJavaScript('window.applyVisualSettings(' + json.dumps(self.visual_settings) + ')')
+            else:
+                self.web.page().runJavaScript('window.syncCurrentSettings()')
+            self.web.page().runJavaScript('window.setTrackMetadata(' + json.dumps(self.track_metadata) + ')')
+
+    def poll_metadata(self):
+        while not self._metadata_stop.is_set():
+            source = self.selected_source.copy()
+            hint = Path(source.get('path', '')).stem if source.get('mode') == 'application' else ''
+            try:
+                result = media_info(hint)
+            except Exception:
+                result = {'artist': '', 'title': '', 'available': False}
+            result['source'] = hint
+            if not self._metadata_stop.is_set():
+                self.metadataFound.emit(result)
+            self._metadata_stop.wait(2)
+
+    def update_metadata(self, value):
+        hint = Path(self.selected_source.get('path', '')).stem if self.selected_source.get('mode') == 'application' else ''
+        if value.get('source', hint) != hint:
+            return
+        self.track_metadata = value
+        self.live.publish('track', value)
+        if self.ready:
+            self.web.page().runJavaScript('window.setTrackMetadata(' + json.dumps(value) + ')')
+
+    def exit_live(self):
+        if self.isFullScreen():
+            self.showNormal()
+        if not self.isVisible():
+            self.restore_window()
+        self.menuBar().show()
+        if self.ready:
+            self.web.page().runJavaScript('window.exitLiveMode()')
+
+    def choose_logo(self):
+        filename, _ = QFileDialog.getOpenFileName(self, 'Choisir mon logo', '',
+                                                 'Images (*.png *.jpg *.jpeg *.webp *.bmp)')
+        if filename:
+            try:
+                background.import_background(filename, DATA_DIR / 'logo')
+                self.send_logo()
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(self, 'Logo', str(exc))
+
+    def import_logo_url(self, url):
+        def download():
+            try:
+                result = background.import_url(url, DATA_DIR / 'logo')
+                self.logoImported.emit(result)
+            except Exception as exc:
+                self.logoFailed.emit(str(exc))
+        threading.Thread(target=download, daemon=True).start()
+
+    def send_logo(self):
+        value = background.state(DATA_DIR / 'logo')
+        self.live.publish('logo', value)
+        if self.ready:
+            self.web.page().runJavaScript('window.setLogoImage(' + json.dumps(value) + ')')
+
+    def clear_logo(self):
+        background.clear(DATA_DIR / 'logo')
+        self.send_logo()
+
+    def use_default_logo(self):
+        background.import_background(BASE / 'logo.png', DATA_DIR / 'logo')
+        self.send_logo()
+
+    def copy_stream_link(self):
+        QApplication.clipboard().setText(self.live.url)
+
+    def open_live_output(self):
+        if not hasattr(self, 'live_view'):
+            self.live_view = QWebEngineView()
+            self.live_view.setWindowTitle('ZELYVARO — Sortie de diffusion')
+            self.live_view.setWindowIcon(self.windowIcon())
+            self.live_view.resize(450, 800)
+            self.live_view.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
+            self.live_view.load(QUrl(self.live.url))
+        self.live_view.show()
+
+    def restore_window(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def send_background(self):
+        value = background.state(DATA_DIR)
+        self.live.publish('background', value)
+        if self.ready:
+            self.web.page().runJavaScript('window.setBackgroundImage(' + json.dumps(value, ensure_ascii=True) + ')')
+
+    def choose_background(self):
+        filename, _ = QFileDialog.getOpenFileName(self, 'Choisir mon image de fond', '',
+                                                 'Images (*.png *.jpg *.jpeg *.webp *.bmp)')
+        if not filename:
+            return
+        try:
+            background.import_background(filename, DATA_DIR)
+            self.send_background()
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, 'Image de fond', str(exc))
+
+    def clear_background(self):
+        background.clear(DATA_DIR)
+        self.send_background()
 
     def set_status(self, status):
         self.last_status = status
+        self.live.publish('status', status)
         if self.ready:
             self.web.page().runJavaScript('window.setDesktopStatus(' + json.dumps(status) + ')')
 
@@ -184,6 +429,8 @@ class MainWindow(QMainWindow):
         self.set_status('Capture indisponible — cliquer pour relancer')
         if self.ready:
             self.web.page().runJavaScript('window.clearDesktopAudio()')
+        self.live.publish('audio', {'bands': [0] * 128, 'waveform': [0] * 256, 'signal': False,
+                                   'level': 0, 'bass': 0, 'mid': 0, 'treble': 0, 'rmsDb': -140})
         if self.selected_source.get('mode') == 'application':
             self.set_status(self.selected_source.get('name', 'Application') + ' — capture interrompue : ' + issue)
         elif not self.probe:
@@ -247,16 +494,33 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.download_error(str(exc))
             return
+        self.quit_application()
+
+    def quit_application(self):
+        self._quitting = True
         self.close()
+        QApplication.quit()
 
     def closeEvent(self, event):
+        if not self.probe and not self._quitting and QSystemTrayIcon.isSystemTrayAvailable():
+            self.hide()
+            event.ignore()
+            return
+        self._metadata_stop.set()
         if self.audio is not None and not self.audio.stop():
             event.ignore()
             return
+        self.tray.hide()
+        self.live.close()
+        if hasattr(self, 'live_view'):
+            self.live_view.close()
         event.accept()
+        if not self.probe:
+            QTimer.singleShot(0, QApplication.quit)
 
 
 def main():
+    global DATA_DIR
     parser = argparse.ArgumentParser()
     parser.add_argument('--self-test', type=Path)
     parser.add_argument('--play-test-tone', action='store_true')
@@ -264,8 +528,19 @@ def main():
     parser.add_argument('--gallery', action='store_true')
     parser.add_argument('--source-pid', type=int)
     parser.add_argument('--expect-tone-hz', type=float)
+    parser.add_argument('--test-profile', type=Path)
+    parser.add_argument('--studio-test', action='store_true')
     args = parser.parse_args()
+    if (args.test_profile or args.studio_test) and not args.self_test:
+        parser.error('Les options de diagnostic nécessitent --self-test.')
+    if args.test_profile:
+        DATA_DIR = args.test_profile.resolve()
+    if sys.platform == 'win32':
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('ZELYVARO.AudioLive')
     app = QApplication([sys.argv[0]])
+    app.setWindowIcon(QIcon(str(BASE / 'app.ico')))
+    app.setQuitOnLastWindowClosed(False)
     app.setOrganizationName('ZELYVARO')
     app.setApplicationName('ZelyvaroAudioLive')
     app.setApplicationVersion(VERSION)

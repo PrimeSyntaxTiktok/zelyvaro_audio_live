@@ -15,6 +15,25 @@ def run_probe(app, window, args):
     report = {'version': VERSION, 'web_loaded': False, 'javascript_bridge': False}
     args.self_test.parent.mkdir(parents=True, exist_ok=True)
     report['themes'] = {}
+    if args.studio_test:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtWebEngineWidgets import QWebEngineView
+        window.live_view = QWebEngineView()
+        window.live_view.resize(540, 960)
+        window.live_view.load(QUrl(window.live.url))
+        window.live_view.show()
+        report['independent_source'] = []
+
+        def sample_live():
+            script = 'JSON.stringify({frames:window.sceneEngine.frameCount,audio:window.audioDiagnostics,errors:window.jsErrors,track:document.querySelector("[data-kind=track] .placed-content").textContent,logo:document.querySelector("[data-kind=logo] img").naturalWidth,background:!!window.sceneEngine.backgroundImage})'
+            def sampled(value):
+                if value:
+                    report['independent_source'].append(json.loads(value))
+            window.live_view.page().runJavaScript(script, sampled)
+        for second in range(2, 15):
+            QTimer.singleShot(second * 1000, sample_live)
+        QTimer.singleShot(3500, window.showMinimized)
+        QTimer.singleShot(8000, window.hide)
     if args.gallery:
         def select(theme):
             window.web.page().runJavaScript("window.setTheme('" + theme + "');if(!document.body.classList.contains('clean'))window.toggleClean()")
@@ -63,7 +82,7 @@ def run_probe(app, window, args):
         report.update(device=audio.device, captured_frames=audio.frames,
                       sample_rate=audio.sample_rate, peak_rms=audio.peak_rms,
                       peak_hz=audio.peak_hz, audio_error=audio.error)
-        script = "JSON.stringify({bridge:!!window.desktopBridge,active:window.desktopAudioActive,frames:window.desktopFrameCount,animation_frames:window.sceneEngine.frameCount,animation_time:window.sceneEngine.time,canvas:document.getElementById('visual').width,errors:window.jsErrors||[]})"
+        script = "JSON.stringify({bridge:!!window.desktopBridge,active:window.desktopAudioActive,frames:window.desktopFrameCount,animation_frames:window.sceneEngine.frameCount,animation_time:window.sceneEngine.time,canvas:document.getElementById('visual').width,audio:window.audioDiagnostics,visual_response:window.verifyAudioRendering(),errors:window.jsErrors||[]})"
 
         def result(value):
             report['renderer'] = json.loads(value) if value else {}
@@ -72,6 +91,7 @@ def run_probe(app, window, args):
                                     and report['native_audio_bridge_loaded']
                                     and report['renderer'].get('canvas') and report['renderer'].get('animation_frames', 0) > 30
                                     and not report['renderer'].get('errors'))
+            report['passed'] &= all(item['changedFraction'] > .025 for item in report['renderer']['visual_response'].values())
             if args.require_audio:
                 report['passed'] &= bool(audio.frames > 0 and not audio.error and
                                          report['renderer'].get('frames', 0) > 0)
@@ -81,6 +101,16 @@ def run_probe(app, window, args):
                 report['passed'] &= bool(audio.peak_rms > .0001 and abs(audio.peak_hz - args.expect_tone_hz) < 30)
             if args.gallery:
                 report['passed'] &= len(set(report['themes'].values())) == 6
+            if args.studio_test:
+                samples = report['independent_source']
+                report['background_continuity'] = bool(len(samples) >= 10 and
+                    samples[-1]['frames'] > samples[0]['frames'] + 100 and
+                    samples[-1]['audio'].get('signal') and
+                    sum(bool(s['audio'].get('signal')) for s in samples) >= 5 and
+                    all(not s['errors'] for s in samples))
+                report['packaged_logo'] = window.windowIcon().isNull() is False
+                report['passed'] &= report['background_continuity'] and report['packaged_logo']
+                window.live_view.grab().save(str(args.self_test.with_name(args.self_test.stem + '-live.png')))
             args.self_test.parent.mkdir(parents=True, exist_ok=True)
             window.grab().save(str(args.self_test.with_suffix('.png')))
             stopped = audio.stop()
@@ -90,5 +120,5 @@ def run_probe(app, window, args):
             window.close()
             app.exit(0 if report['passed'] else 1)
         window.web.page().runJavaScript(script, result)
-    QTimer.singleShot(13000 if args.gallery else 7000, finish)
-    QTimer.singleShot(20000, lambda: app.exit(2))
+    QTimer.singleShot(15500 if args.studio_test else 13000 if args.gallery else 7000, finish)
+    QTimer.singleShot(25000 if args.studio_test else 20000, lambda: app.exit(2))

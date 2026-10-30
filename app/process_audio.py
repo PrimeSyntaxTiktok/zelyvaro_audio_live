@@ -99,3 +99,15 @@ class ProcessCapture:
 
     def __exit__(self, *args):
         self.close()
+
+
+def media_info(application=''):
+    lib = library()
+    if not hasattr(lib, 'zal_media_info'):
+        return {'artist': '', 'title': '', 'available': False}
+    function = lib.zal_media_info
+    function.argtypes = [ct.c_wchar_p, ct.c_wchar_p, ct.c_uint, ct.c_wchar_p, ct.c_uint]
+    function.restype = ct.c_long
+    artist, title = ct.create_unicode_buffer(512), ct.create_unicode_buffer(1024)
+    result = function(application, artist, len(artist), title, len(title))
+    return {'artist': artist.value, 'title': title.value, 'available': result == 0}
