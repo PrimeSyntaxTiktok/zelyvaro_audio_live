@@ -92,7 +92,10 @@ def run_probe(app, window, args):
             report['javascript_bridge'] = report['renderer'].get('bridge', False)
             report['passed'] = bool(report['web_loaded'] and report['javascript_bridge']
                                     and report['native_audio_bridge_loaded']
-                                    and report['renderer'].get('canvas') and report['renderer'].get('animation_frames', 0) > 30
+                                    # The format probe intentionally hides the controls.
+                                    # Its two independent sources must keep advancing;
+                                    # the hidden controls only need to have rendered once.
+                                    and report['renderer'].get('canvas') and report['renderer'].get('animation_frames', 0) > (0 if args.format_test else 30)
                                     and not report['renderer'].get('errors'))
             report['passed'] &= all(item['changedFraction'] > .025 for item in report['renderer']['visual_response'].values())
             if args.require_audio:

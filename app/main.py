@@ -567,7 +567,9 @@ def main():
     app.setWindowIcon(QIcon(str(BASE / 'app.ico')))
     app.setQuitOnLastWindowClosed(False)
     app.setOrganizationName('ZELYVARO')
-    app.setApplicationName('ZelyvaroAudioLive')
+    # Keep opt-in diagnostics out of the normal WebEngine preference/cache profile.
+    # The executable/process name remains unchanged.
+    app.setApplicationName('ZelyvaroAudioLive-Diagnostics' if args.self_test else 'ZelyvaroAudioLive')
     app.setApplicationVersion(VERSION)
     instance = None
     if not args.self_test:
